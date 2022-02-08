@@ -1,0 +1,32 @@
+wait
+    while(no comms from turbine)
+    do nothing
+
+run
+    if(rpm > 11m/s)
+    regulate
+    
+    if(button => low)
+    safety 1
+
+    if(disconnect)
+    safety 2
+
+regulate
+    if(rpm < 11m/s) 
+    run
+
+    if(button => low)
+    safety 1
+
+    if(disconnect)
+    safety 2
+
+safety 1
+    if(button => high)
+    run
+
+safety2
+    if(reconnect)
+    run
+
