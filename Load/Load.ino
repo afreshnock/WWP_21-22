@@ -70,12 +70,12 @@ void loop()
 
 
   //*********Code that runs dependent of the current machine State*********
-
+  
   switch (State)
   {
     case Normal:
 
-
+      
       //Discontinuity Condition
       if ((L_Power < T_Power * 0.9) && (RPM >= 100))
       {
