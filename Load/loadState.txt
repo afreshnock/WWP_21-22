@@ -1,9 +1,12 @@
 wait
+    do nothing
+
     while(no comms from turbine)
     do nothing
 
 run
-    if(rpm > 11m/s)
+
+    if(RPM + k1*Pitch + k2*Phase + k3*Load > thresh)
     regulate
     
     if(button => low)
@@ -13,7 +16,9 @@ run
     safety 2
 
 regulate
-    if(rpm < 11m/s) 
+    
+
+    if(RPM + k1*Pitch + k2*Phase + k3*Load < thresh)
     run
 
     if(button => low)
@@ -23,6 +28,8 @@ regulate
     safety 2
 
 safety 1
+
+
     if(button => high)
     run
 
