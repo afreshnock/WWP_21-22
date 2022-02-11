@@ -1,0 +1,39 @@
+wait
+    do nothing
+
+    while(no comms from turbine)
+    do nothing
+
+run
+
+    if(RPM + k1*Pitch + k2*Phase + k3*Load > thresh)
+    regulate
+    
+    if(button => low)
+    safety 1
+
+    if(disconnect)
+    safety 2
+
+regulate
+    
+
+    if(RPM + k1*Pitch + k2*Phase + k3*Load < thresh)
+    run
+
+    if(button => low)
+    safety 1
+
+    if(disconnect)
+    safety 2
+
+safety 1
+
+
+    if(button => high)
+    run
+
+safety2
+    if(reconnect)
+    run
+
