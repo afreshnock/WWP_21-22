@@ -3,8 +3,8 @@
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 
-enum States {Normal, Safety};
-States State = Normal;
+enum States {Wait, Normal, Regulate, Safety1, Safety2};
+States State = Wait;
 
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
@@ -67,24 +67,27 @@ void loop()
 
 
 
-
-
   //*********Code that runs dependent of the current machine State*********
   
   switch (State)
   {
+    case Wait:
+      //If load recieves data from turbine, enter normal operation
+      if (Serial1.available() >= 6)
+      {
+        //Do something
+        State = Normal;
+      }
+      break;
+    
     case Normal:
-
-      
       //Discontinuity Condition
       if ((L_Power < T_Power * 0.9) && (RPM >= 100))
       {
-
-        //Do something
-
         //Move to Safety State
-        State = Safety;
+        State = Safety2;
       }
+      if(
 
       break;
 
