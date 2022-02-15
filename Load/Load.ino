@@ -8,18 +8,22 @@ States State = Wait;
 
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
-uint16_t L_Voltage; 
+uint16_t L_Voltage; //Load Voltage (mV)
 
 //Turbine Variables
 uint16_t T_Power;   //Turbine Power (mW)
-uint16_t T_Voltage;   //Turbine Power (mW)
+uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
+uint8_t load_Val;   //Load resistance value (1-256)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t theta;      //Active Pitch angle            (degrees)
+bool E_Switch;   //Bool indicating switch open   (normally closed)
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
+uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
+
 
 unsigned long Timer_50;
 unsigned long Timer_250;
@@ -55,7 +59,8 @@ void setup()
 
   //start comms with INA260
   ina260.begin();
-  set_load(256);
+  load_Val = 256;
+  set_Load(load_Val);
   //Turbine-Load UART
   Serial1.begin(9600);
   Timer_50 = millis();
@@ -72,6 +77,7 @@ void loop()
     //*********Code that runs all the time independent of the State**********
     fan_ctrl();
     track_peaks();
+    read_Sensors();
     //***********************************************************************
   
     //*********Code that runs dependent of the current machine State*********
@@ -104,23 +110,66 @@ void manage_State(){
       break;
     
     case Normal:
+      //Power Tracking/Optimization
+      
+
+      //If overspeed
+      if(RPM + k1*theta + k2*alpha + k3*load_Val > thresh)
+      {
+        State = Regulate;
+      }
       //Discontinuity Condition
       if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
       {
-        //Move to Safety State
+        //Move to Safety2
         State = Safety2;
       }
       //Emergency switch condition
-      if(
+      if(!E_Switch)
+      {
+        //Move to Safety1
+        State = Safety2;
+      }
       break;
 
     case Regulate:
+
+
+      //back to normal run state
+      if(RPM + k1*theta + k2*alpha + k3*load_Val < thresh)
+      {
+        State = Normal;
+      }
+      //Discontinuity Condition
+      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
+      {
+        //Move to Safety2
+        State = Safety2;
+      }
+      //Emergency switch condition
+      if(!E_Switch)
+      {
+        //Move to Safety1
+        State = Safety1;
+      }
       break;
       
     case Safety1:
+    //Emergency switch condition
+      if(E_Switch)
+      {
+        //Move to Safety1
+        State = Normal;
+      }
       break;
 
     case Safety2:
+      //Discontinuity Condition
+      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
+      {
+        //Move to Safety2
+        State = Regulate;
+      }
       break;
 
     default:
@@ -129,7 +178,14 @@ void manage_State(){
   }
 }
 
-void set_load(uint8_t val)
+
+void read_Sensors()
+{
+  L_Voltage = ina260.readCurrent();
+  L_Power = ina260.readPower();
+}
+
+void set_Load(uint8_t val)
 {
   digitalWriteFast(32, bitRead(val, 0));  //LSB
   digitalWriteFast(31, bitRead(val, 1));
