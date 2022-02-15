@@ -8,10 +8,11 @@ States State = Wait;
 
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
-
+uint16_t L_Voltage; 
 
 //Turbine Variables
 uint16_t T_Power;   //Turbine Power (mW)
+uint16_t T_Voltage;   //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t theta;      //Active Pitch angle            (degrees)
@@ -19,6 +20,9 @@ uint8_t theta;      //Active Pitch angle            (degrees)
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
+
+unsigned long Timer_50;
+unsigned long Timer_250;
 
 void setup()
 {
@@ -51,25 +55,44 @@ void setup()
 
   //start comms with INA260
   ina260.begin();
-
+  set_load(256);
   //Turbine-Load UART
   Serial1.begin(9600);
+  Timer_50 = millis();
+  Timer_250 = millis();
 
 }
 
 void loop()
 {
-  //*********Code that runs all the time independent of the State**********
-  fan_ctrl();
-  track_peaks();
-
-  //***********************************************************************
-
-
-
-  //*********Code that runs dependent of the current machine State*********
+  uart_RX();
+  if(millis() - Timer_50 >= 50)
+  {
+    Timer_50 = millis();
+    //*********Code that runs all the time independent of the State**********
+    fan_ctrl();
+    track_peaks();
+    //***********************************************************************
   
-  switch (State)
+    //*********Code that runs dependent of the current machine State*********
+    manage_State();
+    //***********************************************************************
+  }
+  if(millis() - Timer_250 >= 250)
+  {
+    Timer_250 = millis();
+    //log and tx data
+    if(Serial.available() > 0){
+      if(Serial.read() == 's'){
+        //toggle datalog
+      }
+    }
+  }
+}
+
+
+void manage_State(){
+    switch (State)
   {
     case Wait:
       //If load recieves data from turbine, enter normal operation
@@ -82,24 +105,28 @@ void loop()
     
     case Normal:
       //Discontinuity Condition
-      if ((L_Power < T_Power * 0.9) && (RPM >= 100))
+      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
       {
         //Move to Safety State
         State = Safety2;
       }
+      //Emergency switch condition
       if(
-
       break;
 
-    case Safety:
+    case Regulate:
+      break;
+      
+    case Safety1:
+      break;
+
+    case Safety2:
       break;
 
     default:
+      State = Wait;
       break;
   }
-  //***********************************************************************
-
-
 }
 
 void set_load(uint8_t val)
@@ -155,7 +182,7 @@ void uart_TX()
 void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
-
+  // ** | Start | RPM_H | RPM_L | T_Power_H | T_Power_L | T_Voltage_H | T_Voltage_L | E_Switch | End | ** // 
   //Six byte minimum needed in RX buffer
   if (Serial1.available() >= 6)
   {
@@ -167,20 +194,25 @@ void uart_RX()
       uint16_t temp1_l = Serial1.read();
       uint16_t temp2_h = Serial1.read();
       uint16_t temp2_l = Serial1.read();
+      uint16_t temp3_h = Serial1.read();
+      uint16_t temp3_l = Serial1.read();
+      uint16_t temp4 = Serial1.read();
 
       //Check for end byte
       if (Serial1.read() == 'E')
       {
         //Save off
-        RPM = ((temp1_h << 8) + temp1_l);
-        T_Power = ((temp2_h << 8) + temp2_l);
+        RPM = ((temp1_h << 8) | temp1_l);
+        T_Power = ((temp2_h << 8) | temp2_l);
+        T_Voltage = ((temp3_h << 8) | temp3_l);
+        E_Switch = temp4;
       }
       else
       {
         //Dump buffer
         while (Serial1.available())
         {
-          Serial1.read();
+          char dumpy = Serial1.read();
         }
       }
     }
@@ -189,7 +221,7 @@ void uart_RX()
       //Dump buffer
       while (Serial1.available())
       {
-        Serial1.read();
+        char dumpy = Serial1.read();
       }
     }
   }
