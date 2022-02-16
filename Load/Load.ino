@@ -1,7 +1,7 @@
 #include <Adafruit_INA260.h>
+#include "WP_SD.h"
 
 Adafruit_INA260 ina260 = Adafruit_INA260();
-
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2};
 States State = Wait;
@@ -23,7 +23,6 @@ bool E_Switch;   //Bool indicating switch open   (normally closed)
 uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
-
 
 unsigned long Timer_50;
 unsigned long Timer_250;
@@ -61,11 +60,18 @@ void setup()
   ina260.begin();
   load_Val = 256;
   set_Load(load_Val);
+  
   //Turbine-Load UART
   Serial1.begin(9600);
+
+  //Set up coms with PC
+  Serial.begin(9600);
+  
+  //set up timers
   Timer_50 = millis();
   Timer_250 = millis();
 
+  try_SD_begin(BUILTIN_SDCARD);
 }
 
 void loop()
@@ -88,10 +94,14 @@ void loop()
   {
     Timer_250 = millis();
     //log and tx data
-    if(Serial.available() > 0){
+    if(SDConnected && Serial.available() > 0){
       if(Serial.read() == 's'){
-        //toggle datalog
+        toggle_Logging();
       }
+    }
+    if(Logging)
+    {
+    try_Log_Data((String)RPM + "," + L_Power);
     }
   }
 }
