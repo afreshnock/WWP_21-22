@@ -5,7 +5,7 @@
 
 File dataFile;
 File numFile;
-char trackfn[] = "file_track.txt";
+char trackfn[] = ".file_track";
 bool SDConnected;
 bool Logging;
 char fileName[20];
@@ -57,24 +57,27 @@ void toggle_Logging()
     // create the new filename
     sprintf(fileName, "log%i.csv", curNum);
 
-
+    SD.remove(trackfn);
     // now reopen the file so we can store the new number
     numFile = SD.open(trackfn, FILE_WRITE);
 
     // if the file opened okay, write to it:
     if (numFile) 
     {
-      Serial.print("Updating tracking file");
+      Serial.println("Updating tracking file...");
       numFile.println(curNum);
       // close the file:
       numFile.close();
-      Serial.println("done.");
+      Serial.println("Done.");
     } else {
       // if the file didn't open, print an error:
       Serial.println("error updating tracking file");
     }
-    Serial.println("Began Logging in: " + fileName);
-
+    Serial.println((String)"Began Logging in: " + fileName);
+  }
+  else
+  {
+    Serial.println("Logging stopped.");
   }
 }
 
@@ -88,9 +91,11 @@ void try_Log_Data(String dataString)
     dataFile.close();
     // print to the serial port too:
     // Serial.println(dataString);
-  } else {
+  } 
+  else 
+  {
     // if the file isn't open, pop up an error:
-    Serial.println("error opening datalog.txt");
+    Serial.println((String) "error opening " + fileName);
   }
 }
 
