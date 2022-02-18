@@ -17,7 +17,7 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-256)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t theta;      //Active Pitch angle            (degrees)
-bool E_Switch;   //Bool indicating switch open   (normally closed)
+bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
