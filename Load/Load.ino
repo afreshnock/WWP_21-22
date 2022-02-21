@@ -17,7 +17,7 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-256)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t theta;      //Active Pitch angle            (degrees)
-bool E_Switch;   //Bool indicating switch open   (normally closed)
+bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
@@ -120,7 +120,7 @@ void manage_State(){
       break;
     
     case Normal:
-      //Power Tracking/Optimization
+      //Optimize for power
       
 
       //If overspeed
@@ -143,6 +143,7 @@ void manage_State(){
       break;
 
     case Regulate:
+      //Regulate RPM at 11m/s val (PID? keep at val)
 
 
       //back to normal run state
@@ -165,7 +166,10 @@ void manage_State(){
       break;
       
     case Safety1:
-    //Emergency switch condition
+      //do safety1 stuff
+
+
+      //Emergency switch condition
       if(E_Switch)
       {
         //Move to Safety1
@@ -174,6 +178,9 @@ void manage_State(){
       break;
 
     case Safety2:
+      //Do safety2 stuff?
+
+
       //Discontinuity Condition
       if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
       {
