@@ -1,4 +1,6 @@
-#include <Adafruit_INA260.h>
+#include "src\INA260\Adafruit_INA260.h"
+//Local libraries need to either be directly in the project folder, or in the src folder. 
+//src linker only works in Arduino IDE 1.5+ I believe.
 #include "WP_SD.h"
 
 Adafruit_INA260 ina260 = Adafruit_INA260();
@@ -285,7 +287,7 @@ void uart_RX()
         //Dump buffer
         while (Serial1.available())
         {
-          char dumpy = Serial1.read();
+          Serial1.read();
         }
       }
     }
@@ -294,7 +296,7 @@ void uart_RX()
       //Dump buffer
       while (Serial1.available())
       {
-        char dumpy = Serial1.read();
+        Serial1.read();
       }
     }
   }

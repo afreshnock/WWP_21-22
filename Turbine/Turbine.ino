@@ -1,4 +1,8 @@
-#include <Adafruit_INA260.h>
+#include "src/INA260/Adafruit_INA260.h"
+#include "src/PA12/PA12.h"
+//Local libraries need to either be directly in the project folder, or in the src folder. 
+//src linker only works in Arduino IDE 1.5+ I believe.
+#include "RPM.h"
 
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
@@ -55,6 +59,8 @@ void setup()
   //Turbine-Load UART
   Serial1.begin(9600);
 
+  setup_RPM();
+
 }
 
 void loop()
@@ -62,7 +68,7 @@ void loop()
   //*********Code that runs all the time independent of the State**********
   fan_ctrl();
   track_peaks();
-
+  refresh_RPM();
   //***********************************************************************
 
 

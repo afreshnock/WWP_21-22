@@ -12,14 +12,7 @@ unsigned long RPMSum = 0;
 int i = 0;
 int F = 0;
 
-void setup_RPM() {
-  pinMode(Sensor, INPUT);
-  Timer = millis();
-  attachInterrupt(digitalPinToInterrupt(Sensor), RPMRead, RISING); //run ISR on rising edge
-  //Interrupts();
-}
-
-int RPMRead() {
+void RPMRead() {
   TempStore = micros();
   if (digitalRead(Sensor) == HIGH) {
     if (FirstRead) {
@@ -58,10 +51,15 @@ int RPMRead() {
     }
   }
 }
+void setup_RPM() {
+  pinMode(Sensor, INPUT);
+  Timer = millis();
+  attachInterrupt(digitalPinToInterrupt(Sensor), RPMRead, RISING); //run ISR on rising edge
+  //Interrupts();
+}
 
-
-void loop() {
-  if ((millis() - Timer) > SampleInterval) {
+void refresh_RPM() {
+  if (millis() - Timer >= SampleInterval) {
     attachInterrupt(digitalPinToInterrupt(Sensor), RPMRead, RISING); //run ISR on rising edge
     Timer = millis();
   }
