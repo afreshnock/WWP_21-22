@@ -4,6 +4,10 @@
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "RPM.h"
 
+#define ID_NUM 0
+
+PA12 myServo(&Serial2, 8, 1); 
+//          (&Serial, enable_pin,  Tx Level)
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 
@@ -43,6 +47,9 @@ void setup()
   pinMode(18, OUTPUT); //SDA1
   pinMode(19, OUTPUT); //SCL1
 
+  //start comms with active rectifier
+  Wire.begin();
+
   //start comms with INA260
   ina260.begin();
 
@@ -51,7 +58,10 @@ void setup()
 
   //Set up coms with PC
   Serial.begin(9600);
-
+  
+  //linear actuator
+  myServo.begin(32);  
+  
   //initialize RPM
   setup_RPM();
 
@@ -72,12 +82,14 @@ void loop()
     //***********************************************************************
   
   }
+  
   if(millis() - Timer_250 >= 250)
   {
     Timer_250 = millis();
     
     uart_TX();
-
+    AR_TX();
+    AR_RX();
 
   }
 
@@ -120,6 +132,29 @@ void read_Sensors()
   T_Power = ina260.readPower();
 }
 
+void AR_RX()
+{
+  Wire.beginTransmission(0x08);
+  Wire.write('a');             //Start byte
+  Wire.write(alpha);           //Alpha
+  Wire.endTransmission();
+}
+
+void AR_TX()
+{
+  Wire.requestFrom(0x08,3);
+  while(Wire.available())
+  {
+    uint8_t byte_0 = Wire.read();
+    uint8_t byte_1 = Wire.read();
+
+    if(byte_0 == 'a')
+    {
+      Serial.print("Active Rectifier Responded: ");
+      Serial.println(byte_0 - '0'); //might not need to subtract 0;
+    }
+  }
+}
 
 void uart_TX()
 {

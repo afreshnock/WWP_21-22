@@ -28,6 +28,8 @@ uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
 
 unsigned long Timer_50;
 unsigned long Timer_250;
+bool PCC_Relay;
+
 
 void setup()
 {
@@ -60,7 +62,7 @@ void setup()
 
   //start comms with INA260
   ina260.begin();
-  load_Val = 256;
+  load_Val = 255;
   set_Load(load_Val);
   
   //Turbine-Load UART
@@ -74,6 +76,8 @@ void setup()
   Timer_250 = millis();
 
   try_SD_begin(BUILTIN_SDCARD);
+
+  PCC_Relay = false;
 }
 
 void loop()
@@ -98,13 +102,40 @@ void loop()
     uart_TX();
     //log and tx data
     if(SDConnected && Serial.available() > 0){
-      if(Serial.read() == 's'){
+      uint8_t cmd = Serial.read();
+      if(cmd == 's'){
         toggle_Logging();
+      }
+      else if(cmd == 'r'){
+        set_Load(Serial.parseInt());
+      }
+      else if(cmd == 'p'){
+        PCC_Relay = !PCC_Relay;
+        digitalWrite(24, PCC_Relay);
       }
     }
     if(Logging)
     {
-    try_Log_Data((String)RPM + "," + L_Power);
+    try_Log_Data((String)RPM + "," + L_Power + "," + L_Voltage);
+    }
+    if(Serial) // check performance cost on checking if serial is active
+    {
+        Serial.print("Current: ");
+        Serial.print(ina260.readCurrent());
+        Serial.println(" mA");
+      
+        Serial.print("Bus Voltage: ");
+        Serial.print(L_Voltage);
+        Serial.println(" mV");
+      
+        Serial.print("Power: ");
+        Serial.print(L_Power);
+        Serial.println(" mW");
+
+        Serial.print("State: ");
+        Serial.print(State);
+        
+        Serial.println();
     }
   }
 }
@@ -201,7 +232,7 @@ void manage_State(){
 
 void read_Sensors()
 {
-  L_Voltage = ina260.readCurrent();
+  L_Voltage = ina260.readBusVoltage();
   L_Power = ina260.readPower();
 }
 
@@ -265,7 +296,7 @@ void uart_RX()
     //Check for start byte
     if (Serial1.read() == 'S')
     {
-      //Read bytes, store in temp
+      //Read bytes, store in temp255
       uint16_t temp1_h = Serial1.read();
       uint16_t temp1_l = Serial1.read();
       uint16_t temp2_h = Serial1.read();
