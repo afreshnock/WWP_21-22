@@ -1,4 +1,4 @@
-#include "src\INA260\Adafruit_INA260.h"
+#include "src/INA260/Adafruit_INA260.h"
 //Local libraries need to either be directly in the project folder, or in the src folder. 
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "WP_SD.h"
@@ -95,6 +95,7 @@ void loop()
   if(millis() - Timer_250 >= 250)
   {
     Timer_250 = millis();
+    uart_TX();
     //log and tx data
     if(SDConnected && Serial.available() > 0){
       if(Serial.read() == 's'){
