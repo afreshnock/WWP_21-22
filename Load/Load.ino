@@ -1,7 +1,7 @@
 #include "src/INA260/Adafruit_INA260.h"
 //Local libraries need to either be directly in the project folder, or in the src folder. 
 //src linker only works in Arduino IDE 1.5+ I believe.
-#include "WP_SD.h"
+#include "src/WP_SD.h"
 
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
@@ -63,7 +63,7 @@ void setup()
   //start comms with INA260
   ina260.begin();
   load_Val = 255;
-  set_Load(load_Val);
+  set_load(load_Val);
   
   //Turbine-Load UART
   Serial1.begin(9600);
@@ -89,59 +89,35 @@ void loop()
     //*********Code that runs all the time independent of the State**********
     fan_ctrl();
     track_peaks();
-    read_Sensors();
+    read_sensors();
     //***********************************************************************
   
     //*********Code that runs dependent of the current machine State*********
-    manage_State();
+    manage_state();
     //***********************************************************************
   }
   if(millis() - Timer_250 >= 250)
   {
     Timer_250 = millis();
     uart_TX();
-    //log and tx data
-    if(SDConnected && Serial.available() > 0){
-      uint8_t cmd = Serial.read();
-      if(cmd == 's'){
-        toggle_Logging();
-      }
-      else if(cmd == 'r'){
-        set_Load(Serial.parseInt());
-      }
-      else if(cmd == 'p'){
-        PCC_Relay = !PCC_Relay;
-        digitalWrite(24, PCC_Relay);
-      }
-    }
-    if(Logging)
-    {
-    try_Log_Data((String)RPM + "," + L_Power + "," + L_Voltage);
-    }
-    if(Serial) // check performance cost on checking if serial is active
-    {
-        Serial.print("Current: ");
-        Serial.print(ina260.readCurrent());
-        Serial.println(" mA");
-      
-        Serial.print("Bus Voltage: ");
-        Serial.print(L_Voltage);
-        Serial.println(" mV");
-      
-        Serial.print("Power: ");
-        Serial.print(L_Power);
-        Serial.println(" mW");
-
-        Serial.print("State: ");
-        Serial.print(State);
-        
-        Serial.println();
-    }
+    pc_coms();
+    try_Log_Data((String)
+              RPM
+      + "," + E_Switch 
+      + "," + alpha 
+      + "," + theta 
+      + "," + load_Val 
+      + "," + L_Voltage 
+      + "," + L_Power
+      + "," + T_Voltage
+      + "," + T_Power
+      + "," + State
+    );
   }
 }
 
 
-void manage_State(){
+void manage_state(){
     switch (State)
   {
     case Wait:
@@ -229,14 +205,102 @@ void manage_State(){
   }
 }
 
+void pc_coms()
+{
+  if(SDConnected && Serial.available() > 0)
+  {
+    uint8_t cmd = Serial.read();
 
-void read_Sensors()
+    switch(cmd)
+    {
+      case 's':
+        toggle_Logging();
+      break;
+
+      case 'r':
+        load_Val = Serial.parseInt();
+        set_load(load_Val);
+      break;
+
+      case 'p':
+        PCC_Relay = !PCC_Relay;
+        digitalWrite(24, PCC_Relay);
+      break;
+
+      case 't':
+        theta = Serial.parseInt();
+      break;
+
+      case 'a':
+        alpha = Serial.parseInt();
+      break;
+
+      case '1':
+        k1 = Serial.parseInt();
+      break;
+
+      case '2':
+        k2 = Serial.parseInt();
+      break;
+
+      case '3':
+        k3 = Serial.parseInt();
+      break;
+
+      default:
+        Serial.println("Command not recognized");
+      break;
+    }
+  }
+
+  if(Serial) // check performance cost on checking if serial is active
+    {
+        Serial.print("RPM: ");
+        Serial.println(RPM);
+
+        Serial.print("Emergency Switch: ");
+        Serial.println(E_Switch);
+
+        Serial.print("Alpha: ");
+        Serial.println(alpha);
+
+        Serial.print("Theta: ");
+        Serial.println(theta);
+
+        Serial.print("Load: ");
+        Serial.print(load_Val);
+        Serial.println(" Ohms");
+
+        Serial.print("Load Voltage: ");
+        Serial.print(L_Voltage);
+        Serial.println(" mV");
+      
+        Serial.print("Load Power: ");
+        Serial.print(L_Power);
+        Serial.println(" mW");
+
+        Serial.print("Tubine Voltage: ");
+        Serial.print(T_Voltage);
+        Serial.println(" mV");
+      
+        Serial.print("Turbine Power: ");
+        Serial.print(T_Power);
+        Serial.println(" mW");
+
+        Serial.print("State: ");
+        Serial.println(State);
+        
+        Serial.println();
+    }
+}
+
+void read_sensors()
 {
   L_Voltage = ina260.readBusVoltage();
   L_Power = ina260.readPower();
 }
 
-void set_Load(uint8_t val)
+void set_load(uint8_t val)
 {
   digitalWriteFast(32, bitRead(val, 0));  //LSB
   digitalWriteFast(31, bitRead(val, 1));
