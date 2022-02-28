@@ -288,8 +288,32 @@ void pc_coms()
         Serial.println(" mW");
 
         Serial.print("State: ");
-        Serial.println(State);
-        
+        switch(State)
+        {
+          case Wait:
+            Serial.println("Wait");
+          break;
+          
+          case Normal:
+            Serial.println("Normal");
+          break;
+          
+          case Regulate:
+            Serial.println("Regulate");
+          break;
+          
+          case Safety1:
+            Serial.println("Safety1");
+          break;
+          
+          case Safety2:
+            Serial.println("Safety2");
+          break;
+          
+          default:
+            Serial.println("Error");
+          break;
+        }
         Serial.println();
     }
 }

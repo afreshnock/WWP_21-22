@@ -151,7 +151,7 @@ void AR_TX()
     if(byte_0 == 'a')
     {
       Serial.print("Active Rectifier Responded: ");
-      Serial.println(byte_0 - '0'); //might not need to subtract 0;
+      Serial.println(byte_1); //might not need to subtract 0;
     }
   }
 }
@@ -181,7 +181,7 @@ void uart_RX()
       uint16_t temp1_l = Serial1.read();
       uint16_t temp2_h = Serial1.read();
       uint16_t temp2_l = Serial1.read();
-      uint16_t temp3 = Serial1.read();
+      uint8_t temp3 = Serial1.read();
 
       //Check for end byte
       if (Serial1.read() == 'E')
