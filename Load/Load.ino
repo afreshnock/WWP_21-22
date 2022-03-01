@@ -11,14 +11,15 @@ States State = Wait;
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
 uint16_t L_Voltage; //Load Voltage (mV)
+uint16_t L_Current; //Load Current (mA)
 
 //Turbine Variables
 uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-256)
-uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint8_t theta;      //Active Pitch angle            (degrees)
+uint8_t alpha = 1;      //Active Rectifier phase angle  (degrees)
+uint8_t theta = 2 ;      //Active Pitch angle            (degrees)
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
@@ -66,7 +67,7 @@ void setup()
   set_load(load_Val);
   
   //Turbine-Load UART
-  Serial1.begin(9600);
+  Serial1.begin(31250);
 
   //Set up coms with PC
   Serial.begin(9600);
@@ -118,11 +119,11 @@ void loop()
 
 
 void manage_state(){
-    switch (State)
+  switch (State)
   {
     case Wait:
       //If load recieves data from turbine, enter normal operation
-      if (Serial1.available() >= 6)
+      if (RPM != 0)
       {
         //Do something
         State = Normal;
@@ -207,14 +208,17 @@ void manage_state(){
 
 void pc_coms()
 {
-  if(SDConnected && Serial.available() > 0)
+  if(Serial.available() > 0)
   {
     uint8_t cmd = Serial.read();
 
     switch(cmd)
     {
       case 's':
-        toggle_Logging();
+        if(SDConnected)
+        {
+          toggle_Logging();
+        }
       break;
 
       case 'r':
@@ -268,16 +272,24 @@ void pc_coms()
         Serial.println(theta);
 
         Serial.print("Load: ");
-        Serial.print(load_Val);
+        Serial.print((float)load_Val/255*63.75);
         Serial.println(" Ohms");
 
         Serial.print("Load Voltage: ");
         Serial.print(L_Voltage);
         Serial.println(" mV");
+
+        Serial.print("Load Current: ");
+        Serial.print(L_Current);
+        Serial.println(" mA");
       
         Serial.print("Load Power: ");
         Serial.print(L_Power);
         Serial.println(" mW");
+
+        Serial.print("Calculated Power: ");
+        Serial.print((float) L_Voltage * L_Current / 1000000);
+        Serial.println(" W");
 
         Serial.print("Tubine Voltage: ");
         Serial.print(T_Voltage);
@@ -322,6 +334,7 @@ void read_sensors()
 {
   L_Voltage = ina260.readBusVoltage();
   L_Power = ina260.readPower();
+  L_Current = ina260.readCurrent();
 }
 
 void set_load(uint8_t val)
@@ -379,7 +392,7 @@ void uart_RX()
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
   // ** | Start | RPM_H | RPM_L | T_Power_H | T_Power_L | T_Voltage_H | T_Voltage_L | E_Switch | End | ** // 
   //Six byte minimum needed in RX buffer
-  if (Serial1.available() >= 6)
+  if (Serial1.available() >= 3)
   {
     //Check for start byte
     if (Serial1.read() == 'S')
@@ -392,7 +405,8 @@ void uart_RX()
       uint16_t temp3_h = Serial1.read();
       uint16_t temp3_l = Serial1.read();
       uint16_t temp4 = Serial1.read();
-
+      
+      
       //Check for end byte
       if (Serial1.read() == 'E')
       {

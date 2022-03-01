@@ -11,7 +11,7 @@ PA12 myServo(&Serial2, 8, 1);
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 
-enum States {Normal, Safety};
+enum States {Wait, Normal, Regulate, Safety1, Safety2};
 States State = Normal;
 
 //Load Variables
@@ -54,7 +54,7 @@ void setup()
   ina260.begin();
 
   //Turbine-Load UART
-  Serial1.begin(9600);
+  Serial1.begin(31250);
 
   //Set up coms with PC
   Serial.begin(9600);
@@ -90,7 +90,7 @@ void loop()
     uart_TX();
     AR_TX();
     AR_RX();
-
+    pc_coms();
   }
 
 
@@ -125,10 +125,58 @@ void loop()
 */
 
 }
+void pc_coms()
+{
+  if(Serial.available() > 0)
+  {
+    uint8_t cmd = Serial.read();
+
+    switch(cmd)
+    {
+      case 't':
+        theta = Serial.parseInt();
+        myServo.goalPosition(ID_NUM, theta);
+      break;
+
+      case 'a':
+        alpha = Serial.parseInt();
+      break;
+
+      default:
+        Serial.println("Command not recognized");
+      break;
+    }
+  }
+
+  if(Serial) // check performance cost on checking if serial is active
+    {
+        Serial.print("RPM: ");
+        Serial.println(RPM);
+
+        Serial.print("Alpha: ");
+        Serial.println(alpha);
+
+        Serial.print("Theta: ");
+        Serial.println(theta);
+
+        Serial.print("State: ");
+        Serial.println(State);
+
+
+        Serial.print("Tubine Voltage: ");
+        Serial.print(T_Voltage);
+        Serial.println(" mV");
+      
+        Serial.print("Turbine Power: ");
+        Serial.print(T_Power);
+        Serial.println(" mW");
+        Serial.println();
+    }
+}
 
 void read_Sensors()
 {
-  T_Voltage = ina260.readCurrent();
+  T_Voltage = ina260.readBusVoltage();
   T_Power = ina260.readPower();
 }
 
@@ -158,11 +206,14 @@ void AR_TX()
 
 void uart_TX()
 {
-  Serial1.write('S');           //Start byte
-  Serial1.write(RPM);           //RPM
-  Serial1.write(T_Power);       //Turbine Power
-  Serial1.write(T_Voltage);     //Turbine Voltage
-  Serial1.write(E_Switch);      //E_Switch state
+  Serial1.write('S');                 //Start byte
+  Serial1.write(highByte(RPM));       //RPM
+  Serial1.write(lowByte(RPM));        //RPM
+  Serial1.write(highByte(T_Power));   //T_Power
+  Serial1.write(lowByte(T_Power));    //T_Power
+  Serial1.write(highByte(T_Voltage)); //Turbine Voltage
+  Serial1.write(lowByte(T_Voltage));  //Turbine Voltage
+  Serial1.write(E_Switch);            //E_Switch state
   Serial1.write('E');           //End byte
 }
 
@@ -177,18 +228,16 @@ void uart_RX()
     if (Serial1.read() == 'S')
     {
       //Read bytes, store in temp
-      uint16_t temp1_h = Serial1.read();
-      uint16_t temp1_l = Serial1.read();
-      uint16_t temp2_h = Serial1.read();
-      uint16_t temp2_l = Serial1.read();
+      uint8_t temp1 = Serial1.read();
+      uint8_t temp2 = Serial1.read();
       uint8_t temp3 = Serial1.read();
 
       //Check for end byte
       if (Serial1.read() == 'E')
       {
         //Save off
-        alpha = ((temp1_h << 8) + temp1_l);
-        theta = ((temp2_h << 8) + temp2_l);
+        alpha = temp1;
+        theta = temp2;
         State = temp3;
       }
       else
