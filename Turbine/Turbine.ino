@@ -33,6 +33,7 @@ uint16_t Peak_RPM;    //(r/min)
 unsigned long Timer_50;
 unsigned long Timer_250;
 
+//---------------------------------------------------------------------------------------
 void setup()
 {
   //UART1 (to turbine)
@@ -70,6 +71,7 @@ void setup()
   Timer_250 = millis();
 }
 
+//---------------------------------------------------------------------------------------
 void loop()
 {
   uart_RX();
@@ -91,95 +93,76 @@ void loop()
     AR_TX();
     AR_RX();
     pc_coms();
+    myServo.goalPosition(ID_NUM, theta);
   }
-
-
-
-/* -- not sure if this state machine is needed yet.
-  //*********Code that runs dependent of the current machine State*********
-
-  switch (State)
-  {
-    case Normal:
-
-
-      //Discontinuity Condition
-      if ((L_Power < T_Power * 0.9) && (RPM >= 100))
-      {
-
-        //Do something
-
-        //Move to Safety State
-        State = Safety;
-      }
-
-      break;
-
-    case Safety:
-      break;
-
-    default:
-      break;
-  }
-  //***********************************************************************
-*/
 
 }
+
+//---------------------------------------------------------------------------------------
 void pc_coms()
 {
-  if(Serial.available() > 0)
-  {
-    uint8_t cmd = Serial.read();
-
-    switch(cmd)
-    {
-      case 't':
-        theta = Serial.parseInt();
-        myServo.goalPosition(ID_NUM, theta);
-      break;
-
-      case 'a':
-        alpha = Serial.parseInt();
-      break;
-
-      default:
-        Serial.println("Command not recognized");
-      break;
-    }
-  }
-
   if(Serial) // check performance cost on checking if serial is active
+  {
+    Serial.print("RPM: ");
+    Serial.println(RPM);
+
+    Serial.print("Alpha: ");
+    Serial.println(alpha);
+
+    Serial.print("Theta: ");
+    Serial.println(theta);
+
+    Serial.print("State: ");
+    Serial.println(State);
+
+    Serial.print("Tubine Voltage: ");
+    Serial.print(T_Voltage);
+    Serial.println(" mV");
+  
+    Serial.print("Turbine Power: ");
+    Serial.print(T_Power);
+    Serial.println(" mW");
+
+    Serial.print("State: ");
+    switch(State)
     {
-        Serial.print("RPM: ");
-        Serial.println(RPM);
-
-        Serial.print("Alpha: ");
-        Serial.println(alpha);
-
-        Serial.print("Theta: ");
-        Serial.println(theta);
-
-        Serial.print("State: ");
-        Serial.println(State);
-
-
-        Serial.print("Tubine Voltage: ");
-        Serial.print(T_Voltage);
-        Serial.println(" mV");
+      case Wait:
+        Serial.println("Wait");
+      break;
       
-        Serial.print("Turbine Power: ");
-        Serial.print(T_Power);
-        Serial.println(" mW");
-        Serial.println();
+      case Normal:
+        Serial.println("Normal");
+      break;
+      
+      case Regulate:
+        Serial.println("Regulate");
+      break;
+      
+      case Safety1:
+        Serial.println("Safety1");
+      break;
+      
+      case Safety2:
+        Serial.println("Safety2");
+      break;
+      
+      default:
+        Serial.println("Error");
+      break;
     }
+
+    Serial.println();
+  }
 }
 
+//---------------------------------------------------------------------------------------
 void read_Sensors()
 {
   T_Voltage = ina260.readBusVoltage();
   T_Power = ina260.readPower();
 }
 
+//---------------------------------------------------------------------------------------
 void AR_RX()
 {
   Wire.beginTransmission(0x08);
@@ -188,6 +171,7 @@ void AR_RX()
   Wire.endTransmission();
 }
 
+//---------------------------------------------------------------------------------------
 void AR_TX()
 {
   Wire.requestFrom(0x08,3);
@@ -204,6 +188,7 @@ void AR_TX()
   }
 }
 
+//---------------------------------------------------------------------------------------
 void uart_TX()
 {
   Serial1.write('S');                 //Start byte
@@ -217,6 +202,7 @@ void uart_TX()
   Serial1.write('E');           //End byte
 }
 
+//---------------------------------------------------------------------------------------
 void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //

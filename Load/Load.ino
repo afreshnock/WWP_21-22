@@ -17,9 +17,9 @@ uint16_t L_Current; //Load Current (mA)
 uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
-uint8_t load_Val;   //Load resistance value (1-256)
-uint8_t alpha = 1;      //Active Rectifier phase angle  (degrees)
-uint8_t theta = 2 ;      //Active Pitch angle            (degrees)
+uint8_t load_Val;   //Load resistance value (1-255)
+uint8_t alpha;      //Active Rectifier phase angle  (degrees)
+uint8_t theta;      //Active Pitch angle            (degrees)
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
@@ -31,7 +31,7 @@ unsigned long Timer_50;
 unsigned long Timer_250;
 bool PCC_Relay;
 
-
+//---------------------------------------------------------------------------------------
 void setup()
 {
   //UART1 (to turbine)
@@ -81,6 +81,7 @@ void setup()
   PCC_Relay = false;
 }
 
+//---------------------------------------------------------------------------------------
 void loop()
 {
   uart_RX();
@@ -109,15 +110,20 @@ void loop()
       + "," + theta 
       + "," + load_Val 
       + "," + L_Voltage 
+      + "," + L_Current 
       + "," + L_Power
       + "," + T_Voltage
       + "," + T_Power
       + "," + State
+      + "," + k1
+      + "," + k2
+      + "," + k3
+      + "," + thresh
     );
   }
 }
 
-
+//---------------------------------------------------------------------------------------
 void manage_state(){
   switch (State)
   {
@@ -206,6 +212,7 @@ void manage_state(){
   }
 }
 
+//---------------------------------------------------------------------------------------
 void pc_coms()
 {
   if(Serial.available() > 0)
@@ -251,12 +258,17 @@ void pc_coms()
         k3 = Serial.parseInt();
       break;
 
+      case 'h':
+        thresh = Serial.parseInt();
+      break;
+
       default:
         Serial.println("Command not recognized");
       break;
     }
   }
 
+//---------------------------------------------------------------------------------------
   if(Serial) // check performance cost on checking if serial is active
     {
         Serial.print("RPM: ");
@@ -299,6 +311,10 @@ void pc_coms()
         Serial.print(T_Power);
         Serial.println(" mW");
 
+        Serial.print("k1, k2, k3, thresh: ");
+        Serial.print((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
+        Serial.println(" mW");
+
         Serial.print("State: ");
         switch(State)
         {
@@ -330,6 +346,7 @@ void pc_coms()
     }
 }
 
+//---------------------------------------------------------------------------------------
 void read_sensors()
 {
   L_Voltage = ina260.readBusVoltage();
@@ -337,6 +354,7 @@ void read_sensors()
   L_Current = ina260.readCurrent();
 }
 
+//---------------------------------------------------------------------------------------
 void set_load(uint8_t val)
 {
   digitalWriteFast(32, bitRead(val, 0));  //LSB
@@ -349,6 +367,7 @@ void set_load(uint8_t val)
   digitalWriteFast(25, bitRead(val, 7));  //MSB
 }
 
+//---------------------------------------------------------------------------------------
 uint8_t fan_ctrl()
 {
   //This function turns the fan on when load power exceeds 10W.
@@ -365,6 +384,7 @@ uint8_t fan_ctrl()
   }
 }
 
+//---------------------------------------------------------------------------------------
 void track_peaks()
 {
   if (L_Power > Peak_Power)
@@ -378,6 +398,7 @@ void track_peaks()
   }
 }
 
+//---------------------------------------------------------------------------------------
 void uart_TX()
 {
   Serial1.write('S');             //Start byte
@@ -387,6 +408,7 @@ void uart_TX()
   Serial1.write('E');             //End byte
 }
 
+//---------------------------------------------------------------------------------------
 void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
