@@ -23,8 +23,8 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Voltage (mV)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint8_t theta;      //Active Pitch angle   
-bool E_Switch;      //Bool indicating switch open         (degrees)
+uint16_t theta;      //Active Pitch angle   
+bool E_Switch = true;      //Bool indicating switch open
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
@@ -75,11 +75,12 @@ void setup()
 void loop()
 {
   uart_RX();
+  refresh_RPM();
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
     //*********Code that runs all the time independent of the State**********
-    refresh_RPM();
+    RPM = outputRPM;
     read_Sensors();
     //***********************************************************************
   
@@ -215,7 +216,8 @@ void uart_RX()
     {
       //Read bytes, store in temp
       uint8_t temp1 = Serial1.read();
-      uint8_t temp2 = Serial1.read();
+      uint16_t temp2_h = Serial1.read();
+      uint16_t temp2_l = Serial1.read();
       uint8_t temp3 = Serial1.read();
 
       //Check for end byte
@@ -223,7 +225,7 @@ void uart_RX()
       {
         //Save off
         alpha = temp1;
-        theta = temp2;
+        theta = ((temp2_h << 8) | temp2_l);
         State = temp3;
       }
       else

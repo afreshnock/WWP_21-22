@@ -19,7 +19,7 @@ uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint8_t theta;      //Active Pitch angle            (degrees)
+uint16_t theta;      //Active Pitch angle            (degrees)
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
@@ -34,6 +34,9 @@ bool PCC_Relay;
 //---------------------------------------------------------------------------------------
 void setup()
 {
+  //init K coeffs
+  k1, k2, k3 = 1;
+  thresh = 100;
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
   pinMode(0, INPUT);  //RX1
@@ -101,6 +104,7 @@ void loop()
   if(millis() - Timer_250 >= 250)
   {
     Timer_250 = millis();
+    unsigned long ts = micros();
     uart_TX();
     pc_coms();
     try_Log_Data((String)
@@ -120,6 +124,7 @@ void loop()
       + "," + k3
       + "," + thresh
     );
+    Serial.println(micros() - ts);
   }
 }
 
@@ -274,19 +279,6 @@ void pc_coms()
         Serial.print("RPM: ");
         Serial.println(RPM);
 
-        Serial.print("Emergency Switch: ");
-        Serial.println(E_Switch);
-
-        Serial.print("Alpha: ");
-        Serial.println(alpha);
-
-        Serial.print("Theta: ");
-        Serial.println(theta);
-
-        Serial.print("Load: ");
-        Serial.print((float)load_Val/255*63.75);
-        Serial.println(" Ohms");
-
         Serial.print("Load Voltage: ");
         Serial.print(L_Voltage);
         Serial.println(" mV");
@@ -309,10 +301,6 @@ void pc_coms()
       
         Serial.print("Turbine Power: ");
         Serial.print(T_Power);
-        Serial.println(" mW");
-
-        Serial.print("k1, k2, k3, thresh: ");
-        Serial.print((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
         Serial.println(" mW");
 
         Serial.print("State: ");
@@ -342,6 +330,36 @@ void pc_coms()
             Serial.println("Error");
           break;
         }
+        
+        Serial.print("Emergency Switch: ");
+        Serial.println(E_Switch);
+        
+        Serial.print("(a) Alpha: ");
+        Serial.println(alpha);
+
+        Serial.print("(t) Theta: ");
+        Serial.println(theta);
+
+        Serial.print("(r) Load: ");
+        Serial.print((float)load_Val/255*63.75);
+        Serial.println(" Ohms");
+        
+        Serial.println("(1)-k1 / (2)-k2 / (3)-k3 / (h)-thressh: ");
+        Serial.println((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
+
+        Serial.print("Overspeed Condition: ");
+        Serial.print(RPM + k1*theta + k2*alpha + k3*load_Val);
+        Serial.print(" > ");
+        Serial.println(thresh);
+        
+        Serial.print("(s) Logging: ");
+        if(Logging){
+          Serial.println("True");
+        }
+        else{
+          Serial.println("False");
+        }
+        
         Serial.println();
     }
 }
@@ -403,7 +421,8 @@ void uart_TX()
 {
   Serial1.write('S');             //Start byte
   Serial1.write(alpha);           //Alpha
-  Serial1.write(theta);           //Theta
+  Serial1.write(highByte(theta));           //Theta
+  Serial1.write(lowByte(theta));           //Theta
   Serial1.write((byte)State);     //State
   Serial1.write('E');             //End byte
 }
