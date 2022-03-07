@@ -83,19 +83,22 @@ void toggle_Logging()
 
 void try_Log_Data(String dataString)
 {
-  File dataFile = SD.open(fileName, FILE_WRITE);
-
-  // if the file is available, write to it:
-  if (dataFile) {
-    dataFile.println(dataString);
-    dataFile.close();
-    // print to the serial port too:
-    // Serial.println(dataString);
-  } 
-  else 
+  if(Logging)
   {
-    // if the file isn't open, pop up an error:
-    Serial.println((String) "error opening " + fileName);
+    File dataFile = SD.open(fileName, FILE_WRITE);
+
+    // if the file is available, write to it:
+    if (dataFile) {
+      dataFile.println(dataString);
+      dataFile.close();
+      // print to the serial port too:
+      // Serial.println(dataString);
+    } 
+    else 
+    {
+      // if the file isn't open, pop up an error:
+      Serial.println((String) "error opening " + fileName);
+    }
   }
 }
 

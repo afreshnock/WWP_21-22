@@ -12,15 +12,7 @@ unsigned long RPMSum = 0;
 int i = 0;
 int F = 0;
 
-void setup() {
-  Serial.begin(9600);
-  pinMode(Sensor, INPUT);
-  Timer = millis();
-  attachInterrupt(digitalPinToInterrupt(Sensor), RPMRead, RISING); //run ISR on rising edge
-  interrupts();
-}
-
-int RPMRead() {
+void RPMRead() {
   TempStore = micros();
   if (digitalRead(Sensor) == HIGH) {
     if (FirstRead) {
@@ -30,7 +22,8 @@ int RPMRead() {
     else {
       Htime2 = TempStore; //capture second rising edge time
       FirstRead = true;
-      noInterrupts();
+      //noInterrupts();
+      detachInterrupt(digitalPinToInterrupt(Sensor));
       Raw_RPM = 15000000 / (Htime2 - Htime1); //calculate rpm from period
       if (Raw_RPM < 10000) {
         if (abs(Raw_RPM - outputRPM) < (SampleInterval * 3)) { //compare new rpm to previous
@@ -58,11 +51,16 @@ int RPMRead() {
     }
   }
 }
+void setup_RPM() {
+  pinMode(Sensor, INPUT);
+  Timer = millis();
+  attachInterrupt(digitalPinToInterrupt(Sensor), RPMRead, RISING); //run ISR on rising edge
+  //Interrupts();
+}
 
-
-void loop() {
-  if ((millis() - Timer) > SampleInterval) {
-    interrupts();
+void refresh_RPM() {
+  if (millis() - Timer >= SampleInterval) {
+    attachInterrupt(digitalPinToInterrupt(Sensor), RPMRead, RISING); //run ISR on rising edge
     Timer = millis();
   }
 }

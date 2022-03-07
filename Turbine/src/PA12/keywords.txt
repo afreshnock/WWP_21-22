@@ -1,0 +1,73 @@
+############################################
+############################################ 
+# Class
+############################################
+
+PA12	KEYWORD1
+
+
+
+############################################
+# Methods and Functions 
+############################################	
+
+goalPosition	KEYWORD2
+getModelNumber	KEYWORD2
+Version	KEYWORD2
+ServoID	KEYWORD2
+StrokeLimit	KEYWORD2
+ShortStrokeLimi	KEYWORD2
+LongStrokeLimit	KEYWORD2
+maxTemperature	KEYWORD2
+limitVolt	KEYWORD2
+minVolt	KEYWORD2
+maxVolt	KEYWORD2
+maxForce	KEYWORD2
+alarmLed	KEYWORD2
+alarmShutdown	KEYWORD2
+resolutionFactor	KEYWORD2
+CalStroke	KEYWORD2
+ThirdPartyProgramInterface	KEYWORD2
+ThirdPartyProgramVersion	KEYWORD2
+pidGain	KEYWORD2
+StrokePulseWidth	KEYWORD2
+CenterDiffernce	KEYWORD2
+PunchInitial	KEYWORD2
+forceEnable	KEYWORD2
+ledOn	KEYWORD2
+complianceMargin	KEYWORD2
+goalPosition	KEYWORD2
+movingSpeed	KEYWORD2
+forceLimit	KEYWORD2
+presentPosition	KEYWORD2
+quick_presentPosition	KEYWORD2
+presentSpeed	KEYWORD2
+presentLoad	KEYWORD2
+presentVolt	KEYWORD2
+presentTemperature	KEYWORD2
+receiveData	KEYWORD2
+Moving	KEYWORD2
+Lock	KEYWORD2
+Punch	KEYWORD2
+	
+############################################
+# Constants
+############################################
+ 
+JOYSTICK_BASE	LITERAL1
+Short	LITERAL1
+Lowest	LITERAL1
+Highest	LITERAL1
+Long	LITERAL1
+Center	LITERAL1
+Middle	LITERAL1
+Low	LITERAL1
+High	LITERAL1
+dGain	LITERAL1
+iGain	LITERAL1
+pGain	LITERAL1
+off	LITERAL1
+RED	LITERAL1
+GREEN	LITERAL1
+BLUE	LITERAL1
+
