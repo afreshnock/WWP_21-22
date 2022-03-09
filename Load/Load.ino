@@ -285,6 +285,9 @@ void pc_coms()
         Serial.print("RPM: ");
         Serial.println(RPM);
 
+        Serial.print("Tunnel Set: ");
+        Serial.println(tunnel_setting);
+
         Serial.print("Load Voltage: ");
         Serial.print(L_Voltage);
         Serial.println(" mV");
