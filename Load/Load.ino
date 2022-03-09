@@ -20,6 +20,7 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint16_t theta;      //Active Pitch angle            (degrees)
+uint8_t tunnel_setting;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
@@ -36,6 +37,7 @@ void setup()
 {
   //init K coeffs
   k1, k2, k3 = 1;
+  tunnel_setting = 0;
   thresh = 100;
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
@@ -123,6 +125,7 @@ void loop()
       + "," + k2
       + "," + k3
       + "," + thresh
+      + "," + tunnel_setting
     );
     Serial.println(micros() - ts);
   }
@@ -266,6 +269,9 @@ void pc_coms()
       case 'h':
         thresh = Serial.parseInt();
       break;
+
+      case 'w':
+        tunnel_setting = Serial.parseInt();
 
       default:
         Serial.println("Command not recognized");
