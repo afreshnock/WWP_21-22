@@ -112,10 +112,7 @@ void pc_coms()
 
     Serial.print("Theta: ");
     Serial.println(theta);
-
-    Serial.print("State: ");
-    Serial.println(State);
-
+    
     Serial.print("Tubine Voltage: ");
     Serial.print(T_Voltage);
     Serial.println(" mV");
@@ -207,9 +204,8 @@ void uart_TX()
 void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
-
   //Six byte minimum needed in RX buffer
-  if (Serial1.available() >= 6)
+  if (Serial1.available())
   {
     //Check for start byte
     if (Serial1.read() == 'S')
@@ -228,22 +224,7 @@ void uart_RX()
         theta = ((temp2_h << 8) | temp2_l);
         State = temp3;
       }
-      else
-      {
-        //Dump buffer
-        while (Serial1.available())
-        {
-          Serial1.read();
-        }
-      }
-    }
-    else
-    {
-      //Dump buffer
-      while (Serial1.available())
-      {
-        Serial1.read();
-      }
+      
     }
   }
 } //hello 

@@ -38,7 +38,6 @@ void RPMRead() {
           Saved_RPM [i] = Raw_RPM; //insert new value into array
           RPMSum = RPMSum + Raw_RPM; //add new value to sum
           Avg_RPM = (RPMSum / 10); 
-          Serial.println(Avg_RPM);
           F = 0; //reset number of fails
         }
         else {

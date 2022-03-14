@@ -30,6 +30,7 @@ uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
 
 unsigned long Timer_50;
 unsigned long Timer_250;
+unsigned long Timer_1000;
 bool PCC_Relay;
 
 //---------------------------------------------------------------------------------------
@@ -37,7 +38,7 @@ void setup()
 {
   //init K coeffs
   k1, k2, k3 = 1;
-  tunnel_setting = 0;
+  //tunnel_setting = 0;
   thresh = 100;
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
@@ -80,18 +81,21 @@ void setup()
   //set up timers
   Timer_50 = millis();
   Timer_250 = millis();
-
+  Timer_1000 = millis();
+  
   try_SD_begin(BUILTIN_SDCARD);
 
   PCC_Relay = false;
+  theta = 2000;
 }
 
 //---------------------------------------------------------------------------------------
 void loop()
 {
-  uart_RX();
+
   if(millis() - Timer_50 >= 50)
   {
+    uart_RX();
     Timer_50 = millis();
     //*********Code that runs all the time independent of the State**********
     fan_ctrl();
@@ -106,9 +110,14 @@ void loop()
   if(millis() - Timer_250 >= 250)
   {
     Timer_250 = millis();
-    unsigned long ts = micros();
+    //unsigned long ts = micros();
     uart_TX();
     pc_coms();
+
+    //Serial.println(micros() - ts);
+  }
+  if(millis() - Timer_1000 >= 100){
+    Timer_1000 = millis();
     try_Log_Data((String)
               RPM
       + "," + E_Switch 
@@ -127,7 +136,6 @@ void loop()
       + "," + thresh
       + "," + tunnel_setting
     );
-    Serial.println(micros() - ts);
   }
 }
 
@@ -207,7 +215,7 @@ void manage_state(){
 
 
       //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
+      if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
       {
         //Move to Safety2
         State = Regulate;
@@ -269,10 +277,10 @@ void pc_coms()
       case 'h':
         thresh = Serial.parseInt();
       break;
-
+      
       case 'w':
         tunnel_setting = Serial.parseInt();
-
+       
       default:
         Serial.println("Command not recognized");
       break;
@@ -284,9 +292,6 @@ void pc_coms()
     {
         Serial.print("RPM: ");
         Serial.println(RPM);
-
-        Serial.print("Tunnel Set: ");
-        Serial.println(tunnel_setting);
 
         Serial.print("Load Voltage: ");
         Serial.print(L_Voltage);
@@ -343,10 +348,13 @@ void pc_coms()
         Serial.print("Emergency Switch: ");
         Serial.println(E_Switch);
         
+        Serial.print("(w) Tunnel Set: ");
+        Serial.println(tunnel_setting);
+        
         Serial.print("(a) Alpha: ");
         Serial.println(alpha);
 
-        Serial.print("(t) Theta: ");
+        Serial.print("(t) Theta (100 - 3380): ");
         Serial.println(theta);
 
         Serial.print("(r) Load: ");
@@ -355,7 +363,8 @@ void pc_coms()
         
         Serial.println("(1)-k1 / (2)-k2 / (3)-k3 / (h)-thressh: ");
         Serial.println((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
-
+        
+        //Serial.println("RPM + k1*theta + k2*alpha + k3*load_Val > thresh");
         Serial.print("Overspeed Condition: ");
         Serial.print(RPM + k1*theta + k2*alpha + k3*load_Val);
         Serial.print(" > ");
@@ -442,10 +451,10 @@ void uart_RX()
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
   // ** | Start | RPM_H | RPM_L | T_Power_H | T_Power_L | T_Voltage_H | T_Voltage_L | E_Switch | End | ** // 
   //Six byte minimum needed in RX buffer
-  if (Serial1.available() >= 3)
+  if (Serial1.available())
   {
     //Check for start byte
-    if (Serial1.read() == 'S')
+    if (Serial1.read()  == 'S')
     {
       //Read bytes, store in temp255
       uint16_t temp1_h = Serial1.read();
@@ -456,7 +465,6 @@ void uart_RX()
       uint16_t temp3_l = Serial1.read();
       uint16_t temp4 = Serial1.read();
       
-      
       //Check for end byte
       if (Serial1.read() == 'E')
       {
@@ -465,22 +473,6 @@ void uart_RX()
         T_Power = ((temp2_h << 8) | temp2_l);
         T_Voltage = ((temp3_h << 8) | temp3_l);
         E_Switch = temp4;
-      }
-      else
-      {
-        //Dump buffer
-        while (Serial1.available())
-        {
-          Serial1.read();
-        }
-      }
-    }
-    else
-    {
-      //Dump buffer
-      while (Serial1.available())
-      {
-        Serial1.read();
       }
     }
   }
