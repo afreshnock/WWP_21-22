@@ -73,7 +73,7 @@ void setup()
   set_load(load_Val);
   
   //Turbine-Load UART
-  Serial1.begin(31250);
+  Serial1.begin(9600);
 
   //Set up coms with PC
   Serial.begin(9600);
@@ -92,10 +92,9 @@ void setup()
 //---------------------------------------------------------------------------------------
 void loop()
 {
-
+  uart_RX();
   if(millis() - Timer_50 >= 50)
   {
-    uart_RX();
     Timer_50 = millis();
     //*********Code that runs all the time independent of the State**********
     fan_ctrl();
@@ -116,7 +115,8 @@ void loop()
 
     //Serial.println(micros() - ts);
   }
-  if(millis() - Timer_1000 >= 100){
+  
+  if(millis() - Timer_1000 >= 1000){
     Timer_1000 = millis();
     try_Log_Data((String)
               RPM
@@ -137,6 +137,7 @@ void loop()
       + "," + tunnel_setting
     );
   }
+  
 }
 
 //---------------------------------------------------------------------------------------
@@ -451,7 +452,7 @@ void uart_RX()
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
   // ** | Start | RPM_H | RPM_L | T_Power_H | T_Power_L | T_Voltage_H | T_Voltage_L | E_Switch | End | ** // 
   //Six byte minimum needed in RX buffer
-  if (Serial1.available())
+  if (Serial1.available() >= 9)
   {
     //Check for start byte
     if (Serial1.read()  == 'S')

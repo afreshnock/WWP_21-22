@@ -23,7 +23,7 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Voltage (mV)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint16_t theta;      //Active Pitch angle   
+uint16_t theta = 2000;      //Active Pitch angle   
 bool E_Switch = true;      //Bool indicating switch open
 
 //IDK Variables
@@ -55,13 +55,14 @@ void setup()
   ina260.begin();
 
   //Turbine-Load UART
-  Serial1.begin(31250);
+  Serial1.begin(9600);
 
   //Set up coms with PC
   Serial.begin(9600);
   
   //linear actuator
   myServo.begin(32);  
+  myServo.movingSpeed(ID_NUM,750);
   
   //initialize RPM
   setup_RPM();
@@ -74,11 +75,12 @@ void setup()
 //---------------------------------------------------------------------------------------
 void loop()
 {
-  uart_RX();
   refresh_RPM();
+  uart_RX();
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
+
     //*********Code that runs all the time independent of the State**********
     RPM = outputRPM;
     read_Sensors();
@@ -205,7 +207,7 @@ void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
   //Six byte minimum needed in RX buffer
-  if (Serial1.available())
+  if (Serial1.available() >= 6)
   {
     //Check for start byte
     if (Serial1.read() == 'S')
