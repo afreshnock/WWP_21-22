@@ -8,7 +8,7 @@ Adafruit_INA260 ina260 = Adafruit_INA260();
 enum States {Wait, Normal, Regulate, Safety1, Safety2};
 States State = Wait;
 
-enum TestStates {TWait, Man, Auto};
+enum TestStates {TWait, Man, Auto, StepWS, StepAlpha, StepTheta};
 TestStates TestState = TWait;
 
 //Load Variables
@@ -27,7 +27,22 @@ uint8_t tunnel_setting;
 double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
+//AutoTest Variables
+double minWindSpeed = 0.0;
 double maxWindSpeed = 15.0;
+double incWindSpeed = 0.5;
+bool incrementingWS;
+
+int minAlpha = 0;
+int maxAlpha = 90;
+int incAlpha = 5;
+bool incrementingAlpha;
+
+uint16_t minTheta = 100;
+uint16_t maxTheta = 3000;
+uint16_t incTheta = 100;
+bool incrementingTheta;
+
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
@@ -37,13 +52,21 @@ uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
 unsigned long Timer_50;
 unsigned long Timer_250;
 unsigned long Timer_1000;
+
+unsigned long Timer_1000T;
+unsigned long Timer_10000T;
+unsigned long Timer_5000T;
+
+
 bool PCC_Relay;
 
 //---------------------------------------------------------------------------------------
 void setup()
 {
   //init K coeffs
-  k1, k2, k3 = 1;
+  k1 = 1;
+  k2 = 1;
+  k3 = 1;
   //tunnel_setting = 0;
   thresh = 100;
   //UART1 (to turbine)
@@ -88,6 +111,10 @@ void setup()
   Timer_50 = millis();
   Timer_250 = millis();
   Timer_1000 = millis();
+
+  Timer_5000T = millis();
+  Timer_1000T = millis();
+  Timer_10000T = millis();
   
   try_SD_begin(BUILTIN_SDCARD);
 
@@ -176,14 +203,141 @@ void manage_sim_state(){
       break;
 
     case Man:
+
       pc_coms();
       break;
 
     case Auto:
-      for(double i = 0.0; i < maxWindSpeed; i += 0.5){
-        
+
+      if(SDConnected)
+      {
+        Logging = true;
+        incrementingWS = false;
+        incrementingAlpha = false;
+        incrementingTheta = false;
+        Serial.println("Automatic Testing Initializing");
+        unsigned long testtime = ((maxWindSpeed - minWindSpeed) * 10 / incWindSpeed) + ((maxAlpha - minAlpha) / incAlpha) + ((maxTheta - minTheta) / incTheta);
+        int Seconds = testtime%60;
+        int Minutes = (testtime/60)%60;
+        int Hours = (testtime/3600)%24;
+        int Days = (testtime/3600*24);
+        String t = (String)Days + "-" + Hours + ":" + Minutes + ":" + Seconds;
+        Serial.println("Estimated Test Duration: ");
+        Serial.print(t);
+        TestState = StepWS;
+      }
+      else
+      {
+        Serial.println("SD card malfunction.");
+        TestState = TWait;
       }
       break;
+
+    case StepWS:
+
+      if(windspeed + incWindSpeed <= maxWindSpeed)
+      {
+        if(!incrementingWS) // need to make sure this flag is handled carefully or we will lock up
+        {
+          set_windspeed(windspeed + incWindSpeed);
+          incrementingWS = true;
+          Timer_10000T = millis();
+        }
+      }
+      else
+      {
+        set_windspeed(minWindSpeed);
+        TestState = TWait;
+      }
+      if(millis() - Timer_10000T >= 10000)
+      {
+        Serial.println("Windspeed: ");
+        Serial.print(windspeed);
+        Serial.println("Theta: ");
+        Serial.print(theta);        
+        Serial.println("Alpha: ");
+        Serial.print(alpha);
+        Serial.println("RPM: ");
+        Serial.print(RPM);        
+        Serial.println("L_P: ");
+        Serial.print(L_Power);        
+        Serial.println("");
+        
+        incrementingWS = false;
+        TestState = StepTheta;
+      }
+      break;
+
+    case StepTheta:
+
+      if(theta + incTheta <= maxTheta)
+      {
+        if(!incrementingTheta) // need to make sure this flag is handled carefully or we will lock up
+        {
+          theta += incTheta;
+          incrementingTheta = true;
+          Timer_1000T = millis();
+        }
+      }
+      else
+      {
+        theta = minTheta;
+        TestState = StepWS;
+      }
+      if(millis() - Timer_1000T >= 1000)
+      {
+        Serial.println("Windspeed: ");
+        Serial.print(windspeed);
+        Serial.println("Theta: ");
+        Serial.print(theta);        
+        Serial.println("Alpha: ");
+        Serial.print(alpha);
+        Serial.println("RPM: ");
+        Serial.print(RPM);        
+        Serial.println("L_P: ");
+        Serial.print(L_Power);        
+        Serial.println("");
+        
+        incrementingTheta = false;
+        TestState = StepAlpha;
+      }
+      break;
+
+    case StepAlpha:
+
+      if(alpha + incAlpha <= maxAlpha)
+      {
+        if(!incrementingAlpha) // need to make sure this flag is handled carefully or we will lock up
+        {
+          alpha += incAlpha;
+          incrementingAlpha = true;
+          Timer_1000T = millis();
+        }
+      }
+      else
+      {
+        alpha = minAlpha;
+        TestState = StepTheta;
+      }
+      if(millis() - Timer_1000T >= 1000)
+      {
+        Serial.println("Windspeed: ");
+        Serial.print(windspeed);
+        Serial.println("Theta: ");
+        Serial.print(theta);        
+        Serial.println("Alpha: ");
+        Serial.print(alpha);
+        Serial.println("RPM: ");
+        Serial.print(RPM);        
+        Serial.println("L_P: ");
+        Serial.print(L_Power);        
+        Serial.println("");
+        
+        incrementingAlpha = false;
+      }
+      break;
+      
+
 
     default:
       TestState = TWait;
@@ -331,12 +485,7 @@ void pc_coms()
       break;
       
       case 'w':
-        windspeed = Serial.parseFloat();
-        double temp = (0.303 + 18.7 * windspeed + -0.67 * pow(windspeed,2) + 0.0317 * pow(windspeed,3));
-        if(temp > 255){
-          temp = 255;
-        }
-        tunnel_setting = (uint8_t)temp;
+        set_windspeed(Serial.parseFloat());
        
       default:
         Serial.println("Command not recognized");
@@ -437,6 +586,17 @@ void pc_coms()
         
         Serial.println();
     }
+}
+
+//---------------------------------------------------------------------------------------
+void set_windspeed(double ws)
+{
+  windspeed = ws;
+  double temp = (0.303 + 18.7 * windspeed + -0.67 * pow(windspeed,2) + 0.0317 * pow(windspeed,3));
+  if(temp > 255){
+    temp = 255;
+  }
+  tunnel_setting = (uint8_t)temp;
 }
 
 //---------------------------------------------------------------------------------------
