@@ -28,6 +28,7 @@ double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //AutoTest Variables
+bool EntryScreen = true;
 double minWindSpeed = 0.0;
 double maxWindSpeed = 15.0;
 double incWindSpeed = 0.5;
@@ -181,7 +182,11 @@ void manage_sim_state(){
   switch (TestState)
   {
     case TWait:
-      
+        if(Serial && EntryScreen)
+        {
+          Serial.println("Manual (M) / Auto (A)");
+          EntryScreen = false;
+        }
         if(Serial.available() > 0)
         {
           uint8_t cmd = Serial.read();
@@ -196,7 +201,8 @@ void manage_sim_state(){
             break;
 
             default:
-              Serial.println("Invalid Selection: Manual (M) / Auto (A)");
+              Serial.println("Invalid Selection...");
+              EntryScreen = true;
             break;
           }
         }
@@ -216,6 +222,7 @@ void manage_sim_state(){
         incrementingAlpha = false;
         incrementingTheta = false;
         Serial.println("Automatic Testing Initializing");
+
         unsigned long testtime = ((maxWindSpeed - minWindSpeed) * 10 / incWindSpeed) + ((maxAlpha - minAlpha) / incAlpha) + ((maxTheta - minTheta) / incTheta);
         int Seconds = testtime%60;
         int Minutes = (testtime/60)%60;
@@ -224,12 +231,14 @@ void manage_sim_state(){
         String t = (String)Days + "-" + Hours + ":" + Minutes + ":" + Seconds;
         Serial.println("Estimated Test Duration: ");
         Serial.print(t);
+
         TestState = StepWS;
       }
       else
       {
         Serial.println("SD card malfunction.");
         TestState = TWait;
+        EntryScreen = true;
       }
       break;
 
@@ -248,6 +257,7 @@ void manage_sim_state(){
       {
         set_windspeed(minWindSpeed);
         TestState = TWait;
+        EntryScreen = true;
       }
       if(millis() - Timer_10000T >= 10000)
       {
