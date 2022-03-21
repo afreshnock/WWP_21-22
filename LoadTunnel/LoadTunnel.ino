@@ -29,26 +29,30 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //AutoTest Variables
 bool EntryScreen = true;
+
+unsigned timeWS= 10000;
 double minWindSpeed = 0.0;
 double maxWindSpeed = 15.0;
 double incWindSpeed = 0.5;
 bool incrementingWS;
 
+unsigned timeAlpha = 1000;
 int minAlpha = 0;
 int maxAlpha = 90;
-int incAlpha = 5;
+int incAlpha = 15;
 bool incrementingAlpha;
 
-int minLoad = 10;
-int maxLoad = 255;
-int incLoad = 5;
+unsigned timeLoad = 1000;
+int minLoad = 50;
+int maxLoad = 250;
+int incLoad = 50;
 bool incrementingLoad;
 
+unsigned timeTheta = 1000;
 uint16_t minTheta = 100;
 uint16_t maxTheta = 3000;
-uint16_t incTheta = 100;
+uint16_t incTheta = 300;
 bool incrementingTheta;
-
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
@@ -59,10 +63,7 @@ unsigned long Timer_50;
 unsigned long Timer_250;
 unsigned long Timer_1000;
 
-unsigned long Timer_1000T;
-unsigned long Timer_10000T;
-unsigned long Timer_5000T;
-
+unsigned long Timer_T;
 
 bool PCC_Relay;
 
@@ -118,9 +119,7 @@ void setup()
   Timer_250 = millis();
   Timer_1000 = millis();
 
-  Timer_5000T = millis();
-  Timer_1000T = millis();
-  Timer_10000T = millis();
+  Timer_T = millis();
   
   try_SD_begin(BUILTIN_SDCARD);
 
@@ -222,21 +221,23 @@ void manage_sim_state(){
 
       if(SDConnected)
       {
-        Logging = true;
+        Logging = false;
+        toggle_Logging();
+
         incrementingWS = false;
         incrementingAlpha = false;
         incrementingTheta = false;
         Serial.println("Automatic Testing Initializing");
 
         uint16_t wsIters = ((maxWindSpeed - minWindSpeed) / incWindSpeed);
-        uint16_t thetaIters = ((maxTheta - minTheta) / incTheta);
-        uint16_t loadIters = ((maxLoad - minLoad) / incLoad);
-        uint16_t alphaIters = ((maxAlpha - minAlpha) / incAlpha);
+        uint16_t thetaIters = ((maxTheta - minTheta) / incTheta) * wsIters;
+        uint16_t loadIters = ((maxLoad - minLoad) / incLoad) * thetaIters;
+        uint16_t alphaIters = ((maxAlpha - minAlpha) / incAlpha) * loadIters;
 
-        unsigned long wsTime = wsIters * 10;
-        unsigned long thetaTime = thetaIters * wsIters;
-        unsigned long loadTime = loadIters * thetaIters * wsIters;
-        unsigned long alphaTime = alphaIters * thetaIters * wsIters;
+        unsigned long wsTime = wsIters * timeWS;
+        unsigned long thetaTime =  wsIters * timeTheta;
+        unsigned long loadTime = loadIters * timeLoad;
+        unsigned long alphaTime = alphaIters * timeAlpha;
 
         unsigned long totalTime = wsTime + thetaTime + loadTime + alphaTime;
         Serial.println(totalTime);
@@ -266,7 +267,7 @@ void manage_sim_state(){
         {
           set_windspeed(windspeed + incWindSpeed);
           incrementingWS = true;
-          Timer_10000T = millis();
+          Timer_T = millis();
         }
       }
       else
@@ -275,7 +276,7 @@ void manage_sim_state(){
         TestState = TWait;
         EntryScreen = true;
       }
-      if(millis() - Timer_10000T >= 10000)
+      if(millis() - Timer_T >= timeWS)
       {
         Serial.println("");
         Serial.print("Windspeed: ");
@@ -304,7 +305,7 @@ void manage_sim_state(){
         {
           theta += incTheta;
           incrementingTheta = true;
-          Timer_1000T = millis();
+          Timer_T = millis();
         }
       }
       else
@@ -312,7 +313,7 @@ void manage_sim_state(){
         theta = minTheta;
         TestState = StepWS;
       }
-      if(millis() - Timer_1000T >= 1000)
+      if(millis() - Timer_T >= timeTheta)
       {
         Serial.println("");
         Serial.print("Windspeed: ");
@@ -341,7 +342,7 @@ void manage_sim_state(){
           load_Val += incLoad;
           set_load(load_Val);
           incrementingLoad = true;
-          Timer_1000T = millis();
+          Timer_T = millis();
         }
       }
       else
@@ -349,7 +350,7 @@ void manage_sim_state(){
         load_Val = minLoad;
         TestState = StepTheta;
       }
-      if(millis() - Timer_1000T >= 1000)
+      if(millis() - Timer_T >= timeLoad)
       {
         Serial.println("");
         Serial.print("Windspeed: ");
@@ -377,7 +378,7 @@ void manage_sim_state(){
         {
           alpha += incAlpha;
           incrementingAlpha = true;
-          Timer_1000T = millis();
+          Timer_T = millis();
         }
       }
       else
@@ -385,7 +386,7 @@ void manage_sim_state(){
         alpha = minAlpha;
         TestState = StepLoad;
       }
-      if(millis() - Timer_1000T >= 1000)
+      if(millis() - Timer_T >= timeAlpha)
       {
         Serial.println("");
         Serial.print("Windspeed: ");
