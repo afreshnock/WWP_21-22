@@ -8,7 +8,7 @@ Adafruit_INA260 ina260 = Adafruit_INA260();
 enum States {Wait, Normal, Regulate, Safety1, Safety2};
 States State = Wait;
 
-enum TestStates {TWait, Man, Auto, StepWS, StepAlpha, StepTheta};
+enum TestStates {TWait, Man, Auto, StepWS, StepAlpha, StepLoad, StepTheta};
 TestStates TestState = TWait;
 
 //Load Variables
@@ -38,6 +38,11 @@ int minAlpha = 0;
 int maxAlpha = 90;
 int incAlpha = 5;
 bool incrementingAlpha;
+
+int minLoad = 10;
+int maxLoad = 255;
+int incLoad = 5;
+bool incrementingLoad;
 
 uint16_t minTheta = 100;
 uint16_t maxTheta = 3000;
@@ -99,7 +104,7 @@ void setup()
 
   //start comms with INA260
   ina260.begin();
-  load_Val = 255;
+  load_Val = minLoad;
   set_load(load_Val);
   
   //Turbine-Load UART
@@ -120,7 +125,7 @@ void setup()
   try_SD_begin(BUILTIN_SDCARD);
 
   PCC_Relay = false;
-  theta = 2000;
+  theta = minTheta;
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
 }
@@ -223,14 +228,25 @@ void manage_sim_state(){
         incrementingTheta = false;
         Serial.println("Automatic Testing Initializing");
 
-        unsigned long testtime = ((maxWindSpeed - minWindSpeed) * 10 / incWindSpeed) + ((maxAlpha - minAlpha) / incAlpha) + ((maxTheta - minTheta) / incTheta);
-        int Seconds = testtime%60;
-        int Minutes = (testtime/60)%60;
-        int Hours = (testtime/3600)%24;
-        int Days = (testtime/3600*24);
+        uint16_t wsIters = ((maxWindSpeed - minWindSpeed) / incWindSpeed);
+        uint16_t thetaIters = ((maxTheta - minTheta) / incTheta);
+        uint16_t loadIters = ((maxLoad - minLoad) / incLoad);
+        uint16_t alphaIters = ((maxAlpha - minAlpha) / incAlpha);
+
+        unsigned long wsTime = wsIters * 10;
+        unsigned long thetaTime = thetaIters * wsIters;
+        unsigned long loadTime = loadIters * thetaIters * wsIters;
+        unsigned long alphaTime = alphaIters * thetaIters * wsIters;
+
+        unsigned long totalTime = wsTime + thetaTime + loadTime + alphaTime;
+        Serial.println(totalTime);
+        int Seconds = totalTime%60;
+        int Minutes = (totalTime/60)%60;
+        int Hours = (totalTime/3600)%24;
+        int Days = (totalTime/(3600*24));
         String t = (String)Days + "-" + Hours + ":" + Minutes + ":" + Seconds;
-        Serial.println("Estimated Test Duration: ");
-        Serial.print(t);
+        Serial.print("Estimated Test Duration: ");
+        Serial.println(t);
 
         TestState = StepWS;
       }
@@ -261,17 +277,19 @@ void manage_sim_state(){
       }
       if(millis() - Timer_10000T >= 10000)
       {
-        Serial.println("Windspeed: ");
-        Serial.print(windspeed);
-        Serial.println("Theta: ");
-        Serial.print(theta);        
-        Serial.println("Alpha: ");
-        Serial.print(alpha);
-        Serial.println("RPM: ");
-        Serial.print(RPM);        
-        Serial.println("L_P: ");
-        Serial.print(L_Power);        
         Serial.println("");
+        Serial.print("Windspeed: ");
+        Serial.println(windspeed);
+        Serial.print("Theta: ");
+        Serial.println(theta);        
+        Serial.print("Alpha: ");
+        Serial.println(alpha);
+        Serial.print("Load: ");
+        Serial.println(load_Val);
+        Serial.print("RPM: ");
+        Serial.println(RPM);        
+        Serial.print("L_P: ");
+        Serial.println(L_Power);        
         
         incrementingWS = false;
         TestState = StepTheta;
@@ -296,19 +314,57 @@ void manage_sim_state(){
       }
       if(millis() - Timer_1000T >= 1000)
       {
-        Serial.println("Windspeed: ");
-        Serial.print(windspeed);
-        Serial.println("Theta: ");
-        Serial.print(theta);        
-        Serial.println("Alpha: ");
-        Serial.print(alpha);
-        Serial.println("RPM: ");
-        Serial.print(RPM);        
-        Serial.println("L_P: ");
-        Serial.print(L_Power);        
         Serial.println("");
-        
+        Serial.print("Windspeed: ");
+        Serial.println(windspeed);
+        Serial.print("Theta: ");
+        Serial.println(theta);        
+        Serial.print("Alpha: ");
+        Serial.println(alpha);
+        Serial.print("Load: ");
+        Serial.println(load_Val);
+        Serial.print("RPM: ");
+        Serial.println(RPM);        
+        Serial.print("L_P: ");
+        Serial.println(L_Power);   
         incrementingTheta = false;
+        TestState = StepAlpha;
+      }
+      break;
+
+    case StepLoad:
+
+      if(load_Val + incLoad <= maxLoad)
+      {
+        if(!incrementingLoad) // need to make sure this flag is handled carefully or we will lock up
+        {
+          load_Val += incLoad;
+          set_load(load_Val);
+          incrementingLoad = true;
+          Timer_1000T = millis();
+        }
+      }
+      else
+      {
+        load_Val = minLoad;
+        TestState = StepTheta;
+      }
+      if(millis() - Timer_1000T >= 1000)
+      {
+        Serial.println("");
+        Serial.print("Windspeed: ");
+        Serial.println(windspeed);
+        Serial.print("Theta: ");
+        Serial.println(theta);        
+        Serial.print("Alpha: ");
+        Serial.println(alpha);
+        Serial.print("Load: ");
+        Serial.println(load_Val);
+        Serial.print("RPM: ");
+        Serial.println(RPM);        
+        Serial.print("L_P: ");
+        Serial.println(L_Power);   
+        incrementingLoad = false;
         TestState = StepAlpha;
       }
       break;
@@ -327,21 +383,23 @@ void manage_sim_state(){
       else
       {
         alpha = minAlpha;
-        TestState = StepTheta;
+        TestState = StepLoad;
       }
       if(millis() - Timer_1000T >= 1000)
       {
-        Serial.println("Windspeed: ");
-        Serial.print(windspeed);
-        Serial.println("Theta: ");
-        Serial.print(theta);        
-        Serial.println("Alpha: ");
-        Serial.print(alpha);
-        Serial.println("RPM: ");
-        Serial.print(RPM);        
-        Serial.println("L_P: ");
-        Serial.print(L_Power);        
         Serial.println("");
+        Serial.print("Windspeed: ");
+        Serial.println(windspeed);
+        Serial.print("Theta: ");
+        Serial.println(theta);        
+        Serial.print("Alpha: ");
+        Serial.println(alpha);
+        Serial.print("Load: ");
+        Serial.println(load_Val);
+        Serial.print("RPM: ");
+        Serial.println(RPM);        
+        Serial.print("L_P: ");
+        Serial.println(L_Power);   
         
         incrementingAlpha = false;
       }
