@@ -4,6 +4,9 @@
 
 
 */
+
+// sda pin 2
+
 volatile unsigned long alpha = 0;
 volatile unsigned long phase = 30;
 unsigned long Timer;
@@ -12,7 +15,7 @@ char SerialRead1;
 char SerialRead2;
 //const char Stages[6] = {0xC0, 0x60, 0x30, 0x12, 0x03, 0x81};
 //23-20 23-18 18-21 21-22 22-19 19-20 0b7654xx10 18 = 7 23 = 0
-const char Stages[6] = {0b10100000, 0b10000001, 0b00010001, 0b00010010,0b01000010, 0b01100000}; //0b7654xx10
+const char Stages[6] = {~0b10100000, ~0b10000001, ~0b00010001, ~0b00010010,~0b01000010, ~0b01100000}; //0b7654xx10
 volatile unsigned long StageChange = 60;
 volatile unsigned int i2cInput, i2cInput1, i2cInput10;
 volatile byte n = 0;
@@ -24,7 +27,7 @@ unsigned int avg1, avg2, avg3, avg4;
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(0x08);
+  Wire.begin(0x35);
   Wire.onReceive(receiveEvent);
   Wire.onRequest(alphaSend);
 

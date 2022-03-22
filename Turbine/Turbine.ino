@@ -93,8 +93,8 @@ void loop()
     Timer_250 = millis();
     
     uart_TX();
-    AR_TX();
-    AR_RX();
+    //AR_TX();
+    //AR_RX();
     pc_coms();
     myServo.goalPosition(ID_NUM, theta);
   }
@@ -104,6 +104,17 @@ void loop()
 //---------------------------------------------------------------------------------------
 void pc_coms()
 {
+  if(Serial.available() > 0){
+    char cmd = Serial.read();
+    switch(cmd){
+      case 'a':
+        alpha = Serial.parseInt();
+        break;
+
+      default:
+      break;
+    }
+  }
   if(Serial) // check performance cost on checking if serial is active
   {
     Serial.print("RPM: ");
@@ -159,20 +170,21 @@ void pc_coms()
 void read_Sensors()
 {
   T_Voltage = ina260.readBusVoltage();
-  T_Power = ina260.readPower();
-}
-
-//---------------------------------------------------------------------------------------
-void AR_RX()
-{
-  Wire.beginTransmission(0x08);
-  Wire.write('a');             //Start byte
-  Wire.write(alpha);           //Alpha
-  Wire.endTransmission();
+  //T_Power = ina260.readPower();
 }
 
 //---------------------------------------------------------------------------------------
 void AR_TX()
+{
+  Wire.beginTransmission(0x08);
+  Wire.write('a');             //Start byte
+  Wire.write(alpha/10);           //Alpha
+  Wire.write(alpha%10);
+  Wire.endTransmission();
+}
+
+//---------------------------------------------------------------------------------------
+void AR_RX()
 {
   Wire.requestFrom(0x08,3);
   while(Wire.available())
