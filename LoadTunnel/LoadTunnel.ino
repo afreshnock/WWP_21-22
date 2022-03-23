@@ -246,10 +246,10 @@ void manage_sim_state(){
         uint16_t loadIters = ((maxLoad - minLoad) / incLoad) * thetaIters;
         uint16_t alphaIters = ((maxAlpha - minAlpha) / incAlpha) * loadIters;
 
-        unsigned long wsTime = wsIters * timeWS;
-        unsigned long thetaTime =  wsIters * timeTheta;
-        unsigned long loadTime = loadIters * timeLoad;
-        unsigned long alphaTime = alphaIters * timeAlpha;
+        unsigned long wsTime = wsIters * timeWS / 1000;
+        unsigned long thetaTime =  wsIters * timeTheta / 1000;
+        unsigned long loadTime = loadIters * timeLoad / 1000;
+        unsigned long alphaTime = alphaIters * timeAlpha / 1000;
 
         unsigned long totalTime = wsTime + thetaTime + loadTime + alphaTime;
         Serial.println(totalTime);
