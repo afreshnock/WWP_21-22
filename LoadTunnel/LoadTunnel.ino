@@ -272,38 +272,24 @@ void manage_sim_state(){
       break;
 
     case StepWS:
-      if(millis() - Timer_T <= timeWS)
+    
+      if(windspeed + incWindSpeed <= maxWindSpeed)
       {
-        if(windspeed + incWindSpeed <= maxWindSpeed)
+        if(!incrementingWS) // need to make sure this flag is handled carefully or we will lock up
         {
-          if(!incrementingWS) // need to make sure this flag is handled carefully or we will lock up
-          {
-            set_windspeed(windspeed + incWindSpeed);
-            incrementingWS = true;
-            Serial.println("");
-            Serial.print("Windspeed: ");
-            Serial.println(windspeed);
-            Serial.print("Theta: ");
-            Serial.println(theta);        
-            Serial.print("Alpha: ");
-            Serial.println(alpha);
-            Serial.print("Load: ");
-            Serial.println(load_Val);
-            Serial.print("RPM: ");
-            Serial.println(RPM);
-            Serial.print("L_P: ");
-            Serial.println(L_Power);
-          }
+          set_windspeed(windspeed + incWindSpeed);
+          incrementingWS = true;
+          print_test_status();
         }
       }
       else
-      {    
-        if(windspeed + incWindSpeed <= maxWindSpeed)
-        {
-          set_windspeed(minWindSpeed);
-          TestState = TWait;
-          EntryScreen = true;
-        }
+      {
+        set_windspeed(minWindSpeed);
+        TestState = TWait;
+        EntryScreen = true;
+      }
+      if(millis() - Timer_T >= timeWS)
+      {
         Timer_T = millis();
         incrementingWS = false;
         TestState = StepTheta;
@@ -311,120 +297,85 @@ void manage_sim_state(){
       break;
 
     case StepTheta:
-      if(millis() - Timer_T <= timeTheta)
+
+      if(theta + incTheta <= maxTheta)
       {
-        if(theta + incTheta <= maxTheta)
+        if(!incrementingTheta) // need to make sure this flag is handled carefully or we will lock up
         {
-          if(!incrementingTheta) // need to make sure this flag is handled carefully or we will lock up
-          {
-            theta += incTheta;
-            incrementingTheta = true;
-            Serial.println("");
-            Serial.print("Windspeed: ");
-            Serial.println(windspeed);
-            Serial.print("Theta: ");
-            Serial.println(theta);        
-            Serial.print("Alpha: ");
-            Serial.println(alpha);
-            Serial.print("Load: ");
-            Serial.println(load_Val);
-            Serial.print("RPM: ");
-            Serial.println(RPM);        
-            Serial.print("L_P: ");
-            Serial.println(L_Power);    
-            
-          }
-        }
-        else
-        {
-          Timer_T = millis();
-          theta = minTheta;
-          TestState = StepWS;
+          theta += incTheta;
+          incrementingTheta = true;
+          print_test_status();
         }
       }
-      else
+
+      if(millis() - Timer_T >= timeTheta)
       {
         Timer_T = millis();
         incrementingTheta = false;
-        TestState = StepAlpha;
+        if(theta + incTheta > maxTheta)
+        {
+          theta = minTheta;
+          TestState = StepWS;
+        }
+        else
+        {
+          TestState = StepAlpha;
+        }
       }
       break;
 
     case StepLoad:
-      if(millis() - Timer_T <= timeLoad)
+
+      if(load_Val + incLoad <= maxLoad)
       {
-        if(load_Val + incLoad <= maxLoad)
+        if(!incrementingLoad) // need to make sure this flag is handled carefully or we will lock up
         {
-          if(!incrementingLoad) // need to make sure this flag is handled carefully or we will lock up
-          {
-            load_Val += incLoad;
-            set_load(load_Val);
-            incrementingLoad = true;
-            Serial.println("");
-            Serial.print("Windspeed: ");
-            Serial.println(windspeed);
-            Serial.print("Theta: ");
-            Serial.println(theta);        
-            Serial.print("Alpha: ");
-            Serial.println(alpha);
-            Serial.print("Load: ");
-            Serial.println(load_Val);
-            Serial.print("RPM: ");
-            Serial.println(RPM);        
-            Serial.print("L_P: ");
-            Serial.println(L_Power);    
-          }
-        }
-        else
-        {
-          Timer_T = millis();
-          load_Val = minLoad;
-          TestState = StepTheta;
+          load_Val += incLoad;
+          set_load(load_Val);
+          incrementingLoad = true;
+          print_test_status();
         }
       }
-      else
+
+      if(millis() - Timer_T <= timeLoad)
       {
         Timer_T = millis();
         incrementingLoad = false;
-        TestState = StepAlpha;
+        
+        if(load_Val + incLoad > maxLoad)
+        {
+          load_Val = minLoad;
+          TestState = StepTheta;
+        }
+        else
+        {
+          TestState = StepAlpha;
+        }
+
       }
       break;
 
     case StepAlpha:
-      if(millis() - Timer_T <= timeAlpha)
+      if(alpha + incAlpha <= maxAlpha)
       {
-        if(alpha + incAlpha <= maxAlpha)
+        if(!incrementingAlpha) // need to make sure this flag is handled carefully or we will lock up
         {
-          if(!incrementingAlpha) // need to make sure this flag is handled carefully or we will lock up
-          {
-            alpha += incAlpha;
-            incrementingAlpha = true;
-            Serial.println("");
-            Serial.print("Windspeed: ");
-            Serial.println(windspeed);
-            Serial.print("Theta: ");
-            Serial.println(theta);        
-            Serial.print("Alpha: ");
-            Serial.println(alpha);
-            Serial.print("Load: ");
-            Serial.println(load_Val);
-            Serial.print("RPM: ");
-            Serial.println(RPM);        
-            Serial.print("L_P: ");
-            Serial.println(L_Power);    
-          }
-        }
-        else
-        {
-          Timer_T = millis();
-          alpha = minAlpha;
-          TestState = StepLoad;
+          alpha += incAlpha;
+          incrementingAlpha = true;
+          print_test_status();
         }
       }
-      else
+      
+      if(millis() - Timer_T >= timeAlpha)
       {
         Timer_T = millis();
         incrementingAlpha = false;
+
+        if(alpha + incAlpha > maxAlpha)
+        {          
+          alpha = minAlpha;
+          TestState = StepLoad;
+        }
       }
       break;
       
@@ -464,6 +415,23 @@ void manage_sim_state(){
   }
 }
 
+//---------------------------------------------------------------------------------------
+void print_test_status()
+{
+  Serial.println("");
+  Serial.print("Windspeed: ");
+  Serial.println(windspeed);
+  Serial.print("Theta: ");
+  Serial.println(theta);
+  Serial.print("Alpha: ");
+  Serial.println(alpha);
+  Serial.print("Load: ");
+  Serial.println(load_Val);
+  Serial.print("RPM: ");
+  Serial.println(RPM);
+  Serial.print("L_P: ");
+  Serial.println(L_Power);
+}
 //---------------------------------------------------------------------------------------
 void manage_state(){
   switch (State)
