@@ -48,6 +48,9 @@ void setup()
   pinMode(18, OUTPUT); //SDA1
   pinMode(19, OUTPUT); //SCL1
 
+  //pinMode(14, OUTPUT);
+  //digitalWrite(14, HIGH);
+  
   //start comms with active rectifier
   Wire.begin();
 
@@ -93,8 +96,8 @@ void loop()
     Timer_250 = millis();
     
     uart_TX();
-    //AR_TX();
-    //AR_RX();
+    AR_TX();
+    AR_RX();
     pc_coms();
     myServo.goalPosition(ID_NUM, theta);
   }
@@ -170,23 +173,27 @@ void pc_coms()
 void read_Sensors()
 {
   T_Voltage = ina260.readBusVoltage();
-  //T_Power = ina260.readPower();
+  T_Power = ina260.readPower();
 }
 
 //---------------------------------------------------------------------------------------
 void AR_TX()
 {
-  Wire.beginTransmission(0x08);
+  Wire.beginTransmission(0x35);
   Wire.write('a');             //Start byte
   Wire.write(alpha/10);           //Alpha
   Wire.write(alpha%10);
+
+  //Wire.send(alpha/10);           //Alpha
+  //Wire.send(alpha%10);
+  
   Wire.endTransmission();
 }
 
 //---------------------------------------------------------------------------------------
 void AR_RX()
 {
-  Wire.requestFrom(0x08,3);
+  Wire.requestFrom(0x35,3);
   while(Wire.available())
   {
     uint8_t byte_0 = Wire.read();
@@ -195,7 +202,8 @@ void AR_RX()
     if(byte_0 == 'a')
     {
       Serial.print("Active Rectifier Responded: ");
-      Serial.println(byte_1); //might not need to subtract 0;
+      Serial.println(byte_1 - 48); //might not need to subtract 0;
+      Serial.println(byte_1 - 48); //might not need to subtract 0;
     }
   }
 }

@@ -31,8 +31,8 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 bool EntryScreen = true;
 
 unsigned timeWS= 10000;
-double minWindSpeed = 0.0;
-double maxWindSpeed = 15.0;
+double minWindSpeed = 2.0;
+double maxWindSpeed = 11.0;
 double incWindSpeed = 0.5;
 bool incrementingWS;
 
@@ -50,7 +50,7 @@ bool incrementingLoad;
 
 unsigned timeTheta = 1000;
 uint16_t minTheta = 100;
-uint16_t maxTheta = 3000;
+uint16_t maxTheta = 2000;
 uint16_t incTheta = 300;
 bool incrementingTheta;
 
@@ -70,6 +70,7 @@ unsigned long Timer_Log;
 unsigned long Timer_T;
 
 bool PCC_Relay;
+bool Auto_PCC;
 
 //---------------------------------------------------------------------------------------
 void setup()
@@ -128,6 +129,7 @@ void setup()
   try_SD_begin(BUILTIN_SDCARD);
 
   PCC_Relay = false;
+  Auto_PCC = true;
   theta = minTheta;
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
@@ -158,6 +160,20 @@ void loop()
     manage_sim_state();
     analogWrite(6, tunnel_setting);
     //Serial.println(micros() - ts);
+
+    if(Auto_PCC)
+    {
+      if(L_Voltage < 3300)
+      {
+        PCC_Relay = true;
+        digitalWrite(24, PCC_Relay);
+      }
+      else
+      {
+        PCC_Relay = false;
+        digitalWrite(24, PCC_Relay);
+      }
+    }
   }
   
   if(millis() - Timer_Log >= logInterval){
@@ -547,6 +563,10 @@ void pc_coms()
         digitalWrite(24, PCC_Relay);
       break;
 
+      case 'm':
+        Auto_PCC = !Auto_PCC;
+      break;
+
       case 't':
         theta = Serial.parseInt();
       break;
@@ -583,6 +603,9 @@ void pc_coms()
 //---------------------------------------------------------------------------------------
   if(Serial) // check performance cost on checking if serial is active
     {
+        Serial.print("PCC Relay: ");
+        Serial.println(PCC_Relay);
+
         Serial.print("RPM: ");
         Serial.println(RPM);
 
