@@ -23,7 +23,7 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Voltage (mV)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint16_t theta;      //Active Pitch angle   
+uint16_t theta = 2000;      //Active Pitch angle   
 bool E_Switch = true;      //Bool indicating switch open
 
 //IDK Variables
@@ -48,6 +48,9 @@ void setup()
   pinMode(18, OUTPUT); //SDA1
   pinMode(19, OUTPUT); //SCL1
 
+  //pinMode(14, OUTPUT);
+  //digitalWrite(14, HIGH);
+  
   //start comms with active rectifier
   Wire.begin();
 
@@ -55,13 +58,14 @@ void setup()
   ina260.begin();
 
   //Turbine-Load UART
-  Serial1.begin(31250);
+  Serial1.begin(9600);
 
   //Set up coms with PC
   Serial.begin(9600);
   
   //linear actuator
   myServo.begin(32);  
+  myServo.movingSpeed(ID_NUM,750);
   
   //initialize RPM
   setup_RPM();
@@ -74,11 +78,12 @@ void setup()
 //---------------------------------------------------------------------------------------
 void loop()
 {
-  uart_RX();
   refresh_RPM();
+  uart_RX();
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
+
     //*********Code that runs all the time independent of the State**********
     RPM = outputRPM;
     read_Sensors();
@@ -102,6 +107,17 @@ void loop()
 //---------------------------------------------------------------------------------------
 void pc_coms()
 {
+  if(Serial.available() > 0){
+    char cmd = Serial.read();
+    switch(cmd){
+      case 'a':
+        alpha = Serial.parseInt();
+        break;
+
+      default:
+      break;
+    }
+  }
   if(Serial) // check performance cost on checking if serial is active
   {
     Serial.print("RPM: ");
@@ -112,10 +128,7 @@ void pc_coms()
 
     Serial.print("Theta: ");
     Serial.println(theta);
-
-    Serial.print("State: ");
-    Serial.println(State);
-
+    
     Serial.print("Tubine Voltage: ");
     Serial.print(T_Voltage);
     Serial.println(" mV");
@@ -164,16 +177,17 @@ void read_Sensors()
 }
 
 //---------------------------------------------------------------------------------------
-void AR_RX()
+void AR_TX()
 {
   Wire.beginTransmission(0x08);
   Wire.write('a');             //Start byte
-  Wire.write(alpha);           //Alpha
+  Wire.write(alpha);
+  
   Wire.endTransmission();
 }
 
 //---------------------------------------------------------------------------------------
-void AR_TX()
+void AR_RX()
 {
   Wire.requestFrom(0x08,3);
   while(Wire.available())
@@ -184,7 +198,7 @@ void AR_TX()
     if(byte_0 == 'a')
     {
       Serial.print("Active Rectifier Responded: ");
-      Serial.println(byte_1); //might not need to subtract 0;
+      Serial.println(byte_1 - 48); //might not need to subtract 0;
     }
   }
 }
@@ -207,7 +221,6 @@ void uart_TX()
 void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
-
   //Six byte minimum needed in RX buffer
   if (Serial1.available() >= 6)
   {
@@ -228,22 +241,7 @@ void uart_RX()
         theta = ((temp2_h << 8) | temp2_l);
         State = temp3;
       }
-      else
-      {
-        //Dump buffer
-        while (Serial1.available())
-        {
-          Serial1.read();
-        }
-      }
-    }
-    else
-    {
-      //Dump buffer
-      while (Serial1.available())
-      {
-        Serial1.read();
-      }
+      
     }
   }
 } //hello 
