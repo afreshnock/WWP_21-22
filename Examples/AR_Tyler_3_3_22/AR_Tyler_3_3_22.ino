@@ -27,7 +27,7 @@ unsigned int avg1, avg2, avg3, avg4;
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(0x35);
+  Wire.begin(0x3);
   Wire.onReceive(receiveEvent);
   Wire.onRequest(alphaSend);
 

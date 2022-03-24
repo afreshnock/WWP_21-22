@@ -179,13 +179,9 @@ void read_Sensors()
 //---------------------------------------------------------------------------------------
 void AR_TX()
 {
-  Wire.beginTransmission(0x35);
+  Wire.beginTransmission(0x08);
   Wire.write('a');             //Start byte
-  Wire.write(alpha/10);           //Alpha
-  Wire.write(alpha%10);
-
-  //Wire.send(alpha/10);           //Alpha
-  //Wire.send(alpha%10);
+  Wire.write(alpha);
   
   Wire.endTransmission();
 }
@@ -193,7 +189,7 @@ void AR_TX()
 //---------------------------------------------------------------------------------------
 void AR_RX()
 {
-  Wire.requestFrom(0x35,3);
+  Wire.requestFrom(0x08,3);
   while(Wire.available())
   {
     uint8_t byte_0 = Wire.read();
@@ -202,7 +198,6 @@ void AR_RX()
     if(byte_0 == 'a')
     {
       Serial.print("Active Rectifier Responded: ");
-      Serial.println(byte_1 - 48); //might not need to subtract 0;
       Serial.println(byte_1 - 48); //might not need to subtract 0;
     }
   }
