@@ -129,7 +129,7 @@ void setup()
   try_SD_begin(BUILTIN_SDCARD);
 
   PCC_Relay = false;
-  Auto_PCC = true;
+  Auto_PCC = false;
   theta = minTheta;
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
@@ -244,6 +244,7 @@ void manage_sim_state(){
       {
         Logging = false;
         toggle_Logging();
+        Auto_PCC = true;
 
         incrementingWS = false;
         incrementingAlpha = false;
@@ -559,8 +560,11 @@ void pc_coms()
       break;
 
       case 'p':
-        PCC_Relay = !PCC_Relay;
-        digitalWrite(24, PCC_Relay);
+        if (!Auto_PCC)
+        {
+          PCC_Relay = !PCC_Relay;
+          digitalWrite(24, PCC_Relay);
+        }
       break;
 
       case 'm':
