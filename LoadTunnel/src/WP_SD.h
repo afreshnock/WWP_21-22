@@ -18,9 +18,12 @@ void try_SD_begin(int chipSelect)
     Serial.println("Card failed, or not present");
     SDConnected = false;
   }
+  else
+  {
   Serial.println("card initialized.");
   SDConnected = true;
   curNum = -1;
+  }
 }
 
 void toggle_Logging()

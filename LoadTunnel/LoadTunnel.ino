@@ -252,7 +252,8 @@ void manage_sim_state(){
       {
         Logging = false;
         toggle_Logging();
-        Auto_PCC = true;
+        Auto_PCC = false;
+        PCC_Relay = false;
 
         incrementingWS = false;
         incrementingAlpha = false;
