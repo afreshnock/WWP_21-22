@@ -38,23 +38,23 @@ bool incrementingWS;
 
 unsigned timeAlpha = 1000;
 int minAlpha = 0;
-int maxAlpha = 90;
+int maxAlpha = 0;
 int incAlpha = 15;
 bool incrementingAlpha;
 
 unsigned timeLoad = 1000;
-int minLoad = 50;
-int maxLoad = 250;
+int minLoad = 10;
+int maxLoad = 210;
 int incLoad = 50;
 bool incrementingLoad;
 
 unsigned timeTheta = 1000;
-uint16_t minTheta = 100;
+uint16_t minTheta = 2000;
 uint16_t maxTheta = 2000;
 uint16_t incTheta = 300;
 bool incrementingTheta;
 
-unsigned logInterval = 1000;
+unsigned logInterval = 250;
 
 bool paused = false; 
 
@@ -299,17 +299,20 @@ void manage_sim_state(){
           print_test_status();
         }
       }
-      else
-      {
-        set_windspeed(minWindSpeed);
-        TestState = TWait;
-        EntryScreen = true;
-      }
       if(millis() - Timer_T >= timeWS)
       {
         Timer_T = millis();
-        incrementingWS = false;
-        TestState = StepTheta;
+        if(windspeed + incWindSpeed > maxWindSpeed)
+        {
+          set_windspeed(minWindSpeed);
+          TestState = TWait;
+          EntryScreen = true;
+        }
+        else
+        {
+          incrementingWS = false;
+          TestState = StepTheta;
+        }
       }
       break;
 
