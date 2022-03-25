@@ -33,6 +33,8 @@ uint16_t Peak_RPM;    //(r/min)
 unsigned long Timer_50;
 unsigned long Timer_250;
 
+bool PCC_Relay = false;
+
 //---------------------------------------------------------------------------------------
 void setup()
 {
@@ -48,8 +50,7 @@ void setup()
   pinMode(18, OUTPUT); //SDA1
   pinMode(19, OUTPUT); //SCL1
 
-  //pinMode(14, OUTPUT);
-  //digitalWrite(14, HIGH);
+  pinMode(14, OUTPUT);
   
   //start comms with active rectifier
   Wire.begin();
@@ -99,6 +100,7 @@ void loop()
     AR_TX();
     AR_RX();
     pc_coms();
+    digitalWrite(14, PCC_Relay);
     myServo.goalPosition(ID_NUM, theta);
   }
 
@@ -230,8 +232,9 @@ void uart_RX()
       //Read bytes, store in temp
       uint8_t temp1 = Serial1.read();
       uint16_t temp2_h = Serial1.read();
-      uint16_t temp2_l = Serial1.read();
+      uint16_t temp2_l = Serial1.read();\
       uint8_t temp3 = Serial1.read();
+      uint8_t temp4 = Serial1.read();
 
       //Check for end byte
       if (Serial1.read() == 'E')
@@ -240,6 +243,7 @@ void uart_RX()
         alpha = temp1;
         theta = ((temp2_h << 8) | temp2_l);
         State = temp3;
+        PCC_Relay = temp4;
       }
       
     }

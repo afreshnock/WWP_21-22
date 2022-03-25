@@ -21,6 +21,7 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
+float resistance;
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint16_t theta;      //Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
@@ -34,29 +35,32 @@ unsigned timeWS= 10000;
 double minWindSpeed = 2.0;
 double maxWindSpeed = 11.0;
 double incWindSpeed = 0.5;
+bool staticWS = false;
 bool incrementingWS;
 
 unsigned timeAlpha = 1000;
 int minAlpha = 0;
 int maxAlpha = 0;
-int incAlpha = 15;
+int incAlpha = 0;
 bool incrementingAlpha;
-bool lastAlphaSweep = false;
+bool staticAlpha = false;
 
 unsigned timeLoad = 1000;
 int minLoad = 10;
 int maxLoad = 210;
 int incLoad = 50;
 bool incrementingLoad;
-bool lastLoadSweep = false;
+bool staticLoad = false;
 
 unsigned timeTheta = 1000;
 uint16_t minTheta = 2000;
 uint16_t maxTheta = 2000;
-uint16_t incTheta = 300;
+uint16_t incTheta = 0;
 bool incrementingTheta;
-bool lastThetaSweep = false;
+bool staticTheta = false;
 
+bool PCCOMS = false;
+unsigned timeT;
 bool paused = false; 
 //-------------------------------------------------------------------------------------
 unsigned logInterval = 250;
@@ -162,7 +166,7 @@ void loop()
     uart_TX();
     manage_sim_state();
     analogWrite(6, tunnel_setting);
-    pc_coms();
+    if(PCCOMS) pc_coms();
     //Serial.println(micros() - ts);
 
     if(Auto_PCC)
@@ -179,7 +183,7 @@ void loop()
       }
     }
   }
-  
+  /*
   if(millis() - Timer_Log >= logInterval){
     Timer_Log = millis();
     try_Log_Data((String)
@@ -202,6 +206,7 @@ void loop()
       + "," + tunnel_setting
     );
   }
+  */
   
 }
 
@@ -223,10 +228,12 @@ void manage_sim_state(){
           {
             case 'M':
               TestState = Man;
+              PCCOMS = true;
             break;
 
             case 'A':
               TestState = Auto;
+              PCCOMS = true;
             break;
 
             default:
@@ -251,6 +258,11 @@ void manage_sim_state(){
         incrementingWS = false;
         incrementingAlpha = false;
         incrementingTheta = false;
+
+        staticAlpha = (maxAlpha - minAlpha == 0 || incAlpha == 0);
+        staticLoad = (maxLoad - minLoad == 0 || incLoad == 0);
+        staticTheta = (maxTheta - minTheta == 0 || incTheta == 0);
+        staticWS = (maxWindSpeed - minWindSpeed == 0 || incWindSpeed ==0);
 
         load_Val = minLoad;
         set_load(load_Val);
@@ -280,7 +292,8 @@ void manage_sim_state(){
         Serial.print("Estimated Test Duration: ");
         Serial.println(t);
         Timer_T = millis();
-        TestState = StepWS;
+        TestState = StepLoad;
+        timeT = loadTime;
       }
       else
       {
@@ -290,113 +303,101 @@ void manage_sim_state(){
       }
       break;
 
-    case StepWS:
-      if(!incrementingWS)
-      {
-        if(windspeed + incWindSpeed <= maxWindSpeed)
-        {
-          set_windspeed(windspeed + incWindSpeed);
-          incrementingWS = true;
-        }
-        else
-        {
-          set_windspeed(minWindSpeed);
-          incrementingWS = false;
-          TestState = TWait;
-          EntryScreen = true;
-        }
-      }
-      if(millis() - Timer_T >= timeWS)
-      {
-        Timer_T = millis();
-        incrementingWS = false;
-        TestState = StepTheta;
-      }
-      break;
-
-    case StepTheta:
-
-      if(!incrementingTheta)
-      {
-        if(lastThetaSweep)
-        {
-          lastThetaSweep = false;
-          theta = minTheta;
-          incrementingTheta = false;
-          TestState = StepWS;
-        }
-        if(theta + incTheta <= maxTheta)
-        {
-          theta += incTheta;
-          incrementingTheta = true;
-        }
-        else
-        {
-          lastThetaSweep = true;
-        }
-      }
-      if(millis() - Timer_T >= timeTheta)
-      {
-        Timer_T = millis();
-        incrementingTheta = false;
-        TestState = StepAlpha;
-      }
-      break;
-
     case StepLoad:
-      if(!incrementingLoad) // need to make sure this flag is handled carefully or we will lock up
+      if(millis() - Timer_T >= timeT)
       {
-        if(lastLoadSweep)
+        Timer_T = millis();
+        if(!staticLoad)
         {
-          lastLoadSweep = false;
-          load_Val = minLoad;
-          incrementingLoad = false;
-          TestState = StepTheta;
-        }
-        if(load_Val + incLoad <= maxLoad)
-        {
-          load_Val += incLoad;
-          set_load(load_Val);
-          incrementingLoad = true;
+          timeT = timeLoad;
+          if(load_Val + incLoad <= maxLoad)
+          {
+            load_Val += incLoad;
+            set_load(load_Val);
+          }
+          else
+          {
+            load_Val = minLoad;
+            set_load(load_Val);
+            TestState = StepAlpha;
+          }
         }
         else
         {
-          lastLoadSweep = true;
+          TestState = StepAlpha;
         }
-      }
-      if(millis() - Timer_T <= timeLoad)
-      {
-        Timer_T = millis();
-        incrementingLoad = false;
-        TestState = StepAlpha;
       }
       break;
 
     case StepAlpha:
-      if(!incrementingAlpha) // need to make sure this flag is handled carefully or we will lock up
-      {
-        if(alpha + incAlpha <= maxAlpha)
+        if(!staticAlpha)
         {
-          alpha += incAlpha;
-          incrementingAlpha = true;
+          timeT = timeAlpha;
+          if(alpha + incAlpha <= maxAlpha)
+          {
+            alpha += incAlpha;
+            TestState = StepLoad;
+          }
+          else
+          {
+            alpha = minAlpha;
+            TestState = StepTheta;
+          }
         }
         else
         {
-          alpha = minAlpha;
-          incrementingAlpha = false;
-          TestState = StepLoad;
+          TestState = StepTheta;
         }
-      }
-      if(millis() - Timer_T >= timeAlpha)
-      {
-        Timer_T = millis();
-        incrementingAlpha = false;
-      }
       break;
-      
-    default:
-      TestState = TWait;
+
+    case StepTheta:
+        if(!staticTheta)
+        {
+          timeT = timeTheta;
+          if(theta + incTheta <= maxTheta)
+          {
+            theta += incTheta;
+            TestState = StepLoad;
+          }
+          else
+          {
+            theta = minTheta;
+            TestState = StepWS;
+          }
+        }
+        else
+        {
+          TestState = StepWS;
+        }
       break;
+
+    case StepWS:
+        if(!staticWS)
+        {
+          timeT = timeWS;
+          if(windspeed + incWindSpeed <= maxWindSpeed)
+          {
+            windspeed += incWindSpeed;
+            set_windspeed(windspeed);
+            TestState = StepLoad;
+          }
+          else
+          {
+            windspeed = minWindSpeed;
+            TestState = TWait;
+          }
+        }
+        else
+        {
+          windspeed = minWindSpeed;
+          TestState = TWait;
+        }
+      break;
+
+
+
+
+
   }
   if(Serial.available() > 0)
   {
@@ -408,6 +409,7 @@ void manage_sim_state(){
         Serial.println("Test cancelled");
         if(Logging) toggle_Logging();
         set_windspeed(0.0);
+        PCCOMS = false;
       break;
 
       case 'P':        
@@ -539,7 +541,7 @@ void manage_state(){
 //---------------------------------------------------------------------------------------
 void pc_coms()
 {
-  if(TestState == Man && Serial.available() > 0)
+  if(Serial.available() > 0)
   {
     uint8_t cmd = Serial.read();
 
@@ -553,7 +555,9 @@ void pc_coms()
       break;
 
       case 'r':
-        load_Val = Serial.parseInt();
+        resistance = Serial.parseFloat();
+        if(resistance > 63.75) resistance = 63.75;
+        load_Val = (int)(resistance*4);
         set_load(load_Val);
       break;
 
@@ -675,7 +679,7 @@ void pc_coms()
         Serial.print("(t) Theta (100 - 3380): ");
         Serial.println(theta);
 
-        Serial.print("(r) Load: ");
+        Serial.print("(r) Load ( 0- 64 ): ");
         Serial.print((float)load_Val/255*63.75);
         Serial.println(" Ohms");
         
@@ -771,6 +775,7 @@ void uart_TX()
   Serial1.write(highByte(theta));           //Theta
   Serial1.write(lowByte(theta));           //Theta
   Serial1.write((byte)State);     //State
+  Serial1.write(PCC_Relay);
   Serial1.write('E');             //End byte
 }
 
