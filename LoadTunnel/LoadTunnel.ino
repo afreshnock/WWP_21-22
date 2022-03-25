@@ -183,7 +183,7 @@ void loop()
       }
     }
   }
-  /*
+  
   if(millis() - Timer_Log >= logInterval){
     Timer_Log = millis();
     try_Log_Data((String)
@@ -206,7 +206,6 @@ void loop()
       + "," + tunnel_setting
     );
   }
-  */
   
 }
 
@@ -394,12 +393,8 @@ void manage_sim_state(){
         }
       break;
 
-
-
-
-
   }
-  if(Serial.available() > 0)
+  if(TestState != Man && Serial.available() > 0)
   {
     uint8_t cmd = Serial.read();
     switch(cmd)
@@ -453,6 +448,7 @@ void print_test_status()
 void manage_state(){
   switch (State)
   {
+    
     case Wait:
       //If load recieves data from turbine, enter normal operation
       if (RPM != 0)
@@ -547,6 +543,14 @@ void pc_coms()
 
     switch(cmd)
     {
+      case 'Q':
+        TestState = TWait;
+        Serial.println("Test cancelled");
+        if(Logging) toggle_Logging();
+        set_windspeed(0.0);
+        PCCOMS = false;
+      break;
+
       case 's':
         if(SDConnected)
         {
