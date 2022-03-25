@@ -27,7 +27,7 @@ uint8_t tunnel_setting;
 double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
-//AutoTest Variables
+//AutoTest Variables -----------------------------------------------------------------
 bool EntryScreen = true;
 
 unsigned timeWS= 10000;
@@ -41,22 +41,25 @@ int minAlpha = 0;
 int maxAlpha = 0;
 int incAlpha = 15;
 bool incrementingAlpha;
+bool lastAlphaSweep = false;
 
 unsigned timeLoad = 1000;
 int minLoad = 10;
 int maxLoad = 210;
 int incLoad = 50;
 bool incrementingLoad;
+bool lastLoadSweep = false;
 
 unsigned timeTheta = 1000;
 uint16_t minTheta = 2000;
 uint16_t maxTheta = 2000;
 uint16_t incTheta = 300;
 bool incrementingTheta;
-
-unsigned logInterval = 250;
+bool lastThetaSweep = false;
 
 bool paused = false; 
+//-------------------------------------------------------------------------------------
+unsigned logInterval = 250;
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
@@ -159,6 +162,7 @@ void loop()
     uart_TX();
     manage_sim_state();
     analogWrite(6, tunnel_setting);
+    pc_coms();
     //Serial.println(micros() - ts);
 
     if(Auto_PCC)
@@ -234,8 +238,6 @@ void manage_sim_state(){
       break;
 
     case Man:
-
-      pc_coms();
       break;
 
     case Auto:
@@ -289,113 +291,106 @@ void manage_sim_state(){
       break;
 
     case StepWS:
-    
-      if(windspeed + incWindSpeed <= maxWindSpeed)
+      if(!incrementingWS)
       {
-        if(!incrementingWS) // need to make sure this flag is handled carefully or we will lock up
+        if(windspeed + incWindSpeed <= maxWindSpeed)
         {
           set_windspeed(windspeed + incWindSpeed);
           incrementingWS = true;
-          print_test_status();
+        }
+        else
+        {
+          set_windspeed(minWindSpeed);
+          incrementingWS = false;
+          TestState = TWait;
+          EntryScreen = true;
         }
       }
       if(millis() - Timer_T >= timeWS)
       {
         Timer_T = millis();
-        if(windspeed + incWindSpeed > maxWindSpeed)
-        {
-          set_windspeed(minWindSpeed);
-          TestState = TWait;
-          EntryScreen = true;
-        }
-        else
-        {
-          incrementingWS = false;
-          TestState = StepTheta;
-        }
+        incrementingWS = false;
+        TestState = StepTheta;
       }
       break;
 
     case StepTheta:
 
-      if(theta + incTheta <= maxTheta)
+      if(!incrementingTheta)
       {
-        if(!incrementingTheta) // need to make sure this flag is handled carefully or we will lock up
+        if(lastThetaSweep)
+        {
+          lastThetaSweep = false;
+          theta = minTheta;
+          incrementingTheta = false;
+          TestState = StepWS;
+        }
+        if(theta + incTheta <= maxTheta)
         {
           theta += incTheta;
           incrementingTheta = true;
-          print_test_status();
+        }
+        else
+        {
+          lastThetaSweep = true;
         }
       }
-
       if(millis() - Timer_T >= timeTheta)
       {
         Timer_T = millis();
         incrementingTheta = false;
-        if(theta + incTheta > maxTheta)
-        {
-          theta = minTheta;
-          TestState = StepWS;
-        }
-        else
-        {
-          TestState = StepAlpha;
-        }
+        TestState = StepAlpha;
       }
       break;
 
     case StepLoad:
-
-      if(load_Val + incLoad <= maxLoad)
+      if(!incrementingLoad) // need to make sure this flag is handled carefully or we will lock up
       {
-        if(!incrementingLoad) // need to make sure this flag is handled carefully or we will lock up
+        if(lastLoadSweep)
+        {
+          lastLoadSweep = false;
+          load_Val = minLoad;
+          incrementingLoad = false;
+          TestState = StepTheta;
+        }
+        if(load_Val + incLoad <= maxLoad)
         {
           load_Val += incLoad;
           set_load(load_Val);
           incrementingLoad = true;
-          print_test_status();
+        }
+        else
+        {
+          lastLoadSweep = true;
         }
       }
-
       if(millis() - Timer_T <= timeLoad)
       {
         Timer_T = millis();
         incrementingLoad = false;
-        
-        if(load_Val + incLoad > maxLoad)
-        {
-          load_Val = minLoad;
-          TestState = StepTheta;
-        }
-        else
-        {
-          TestState = StepAlpha;
-        }
-
+        TestState = StepAlpha;
       }
       break;
 
     case StepAlpha:
-      if(alpha + incAlpha <= maxAlpha)
+      if(!incrementingAlpha) // need to make sure this flag is handled carefully or we will lock up
       {
-        if(!incrementingAlpha) // need to make sure this flag is handled carefully or we will lock up
+        if(alpha + incAlpha <= maxAlpha)
         {
           alpha += incAlpha;
           incrementingAlpha = true;
-          print_test_status();
+        }
+        else
+        {
+          alpha = minAlpha;
+          incrementingAlpha = false;
+          TestState = StepLoad;
         }
       }
-      
       if(millis() - Timer_T >= timeAlpha)
       {
         Timer_T = millis();
         incrementingAlpha = false;
-
-        if(alpha + incAlpha > maxAlpha)
-        {          
-          alpha = minAlpha;
-          TestState = StepLoad;
-        }
       }
       break;
       
@@ -544,7 +539,7 @@ void manage_state(){
 //---------------------------------------------------------------------------------------
 void pc_coms()
 {
-  if(Serial.available() > 0)
+  if(TestState == Man && Serial.available() > 0)
   {
     uint8_t cmd = Serial.read();
 
