@@ -31,9 +31,9 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 //AutoTest Variables -----------------------------------------------------------------
 bool EntryScreen = true;
 
-unsigned timeWS= 10000;
-double minWindSpeed = 2.0;
-double maxWindSpeed = 11.0;
+unsigned timeWS= 15000;
+double minWindSpeed = 2.5;
+double maxWindSpeed = 12.0;
 double incWindSpeed = 0.5;
 bool staticWS = false;
 bool incrementingWS;
@@ -46,9 +46,9 @@ bool incrementingAlpha;
 bool staticAlpha = false;
 
 unsigned timeLoad = 1000;
-int minLoad = 10;
-int maxLoad = 210;
-int incLoad = 50;
+float minLoad = 3.5;
+float maxLoad = 3.5;
+float incLoad = 0;
 bool incrementingLoad;
 bool staticLoad = false;
 
@@ -117,8 +117,7 @@ void setup()
 
   //start comms with INA260
   ina260.begin();
-  load_Val = minLoad;
-  set_load(load_Val);
+  set_load(minLoad);
   
   //Turbine-Load UART
   Serial1.begin(9600);
@@ -168,20 +167,19 @@ void loop()
     analogWrite(6, tunnel_setting);
     if(PCCOMS) pc_coms();
     //Serial.println(micros() - ts);
-
+    
     if(Auto_PCC)
     {
       if(L_Voltage < 3300)
       {
         PCC_Relay = true;
-        digitalWrite(24, PCC_Relay);
       }
       else
       {
         PCC_Relay = false;
-        digitalWrite(24, PCC_Relay);
       }
     }
+    digitalWrite(24, PCC_Relay);
   }
   
   if(millis() - Timer_Log >= logInterval){
@@ -192,6 +190,7 @@ void loop()
       + "," + E_Switch 
       + "," + alpha 
       + "," + theta 
+      + "," + resistance 
       + "," + load_Val 
       + "," + L_Voltage 
       + "," + L_Current 
@@ -217,6 +216,7 @@ void manage_sim_state(){
     case TWait:
         if(Serial && EntryScreen)
         {
+          PCCOMS = false;
           Serial.println("Manual (M) / Auto (A)");
           EntryScreen = false;
         }
@@ -263,9 +263,8 @@ void manage_sim_state(){
         staticLoad = (maxLoad - minLoad == 0 || incLoad == 0);
         staticTheta = (maxTheta - minTheta == 0 || incTheta == 0);
         staticWS = (maxWindSpeed - minWindSpeed == 0 || incWindSpeed ==0);
-
-        load_Val = minLoad;
-        set_load(load_Val);
+        
+        set_load(minLoad);
         alpha = minAlpha;
         theta = minTheta;
         set_windspeed(minWindSpeed);
@@ -298,6 +297,7 @@ void manage_sim_state(){
       else
       {
         Serial.println("SD card malfunction.");
+        PCCOMS = false;
         TestState = TWait;
         EntryScreen = true;
       }
@@ -310,15 +310,15 @@ void manage_sim_state(){
         if(!staticLoad)
         {
           timeT = timeLoad;
-          if(load_Val + incLoad <= maxLoad)
+          if(resistance + incLoad <= maxLoad)
           {
-            load_Val += incLoad;
-            set_load(load_Val);
+            resistance += incLoad;
+            set_load(resistance);
           }
           else
           {
-            load_Val = minLoad;
-            set_load(load_Val);
+            resistance = minLoad;
+            set_load(resistance);
             TestState = StepAlpha;
           }
         }
@@ -383,68 +383,26 @@ void manage_sim_state(){
           }
           else
           {
-            windspeed = minWindSpeed;
+            Logging = false;
             TestState = TWait;
+            set_windspeed(0.0);
+            EntryScreen = true;
+            PCCOMS = false;
           }
         }
         else
         {
-          windspeed = minWindSpeed;
+          Logging = false;
           TestState = TWait;
+          set_windspeed(0.0);
+          EntryScreen = true;
+          PCCOMS = false;
         }
       break;
 
   }
-  if(TestState != Man && Serial.available() > 0)
-  {
-    uint8_t cmd = Serial.read();
-    switch(cmd)
-    {
-      case 'Q':
-        TestState = TWait;
-        Serial.println("Test cancelled");
-        if(Logging) toggle_Logging();
-        set_windspeed(0.0);
-        PCCOMS = false;
-      break;
-
-      case 'P':        
-        paused = true;
-        while(paused)
-        {
-          if(Serial.available() > 0)
-          {
-            if(Serial.read() == 'P')
-            {
-              paused = false;
-            }
-          }
-        }
-      break;
-
-      default:
-      break;
-    }
-  }
 }
 
-//---------------------------------------------------------------------------------------
-void print_test_status()
-{
-  Serial.println("");
-  Serial.print("Windspeed: ");
-  Serial.println(windspeed);
-  Serial.print("Theta: ");
-  Serial.println(theta);
-  Serial.print("Alpha: ");
-  Serial.println(alpha);
-  Serial.print("Load: ");
-  Serial.println(load_Val);
-  Serial.print("RPM: ");
-  Serial.println(RPM);
-  Serial.print("L_P: ");
-  Serial.println(L_Power);
-}
 //---------------------------------------------------------------------------------------
 void manage_state(){
   switch (State)
@@ -549,7 +507,22 @@ void pc_coms()
         Serial.println("Test cancelled");
         if(Logging) toggle_Logging();
         set_windspeed(0.0);
+        EntryScreen = true;
         PCCOMS = false;
+      break;
+
+      case 'P':        
+        paused = true;
+        while(paused)
+        {
+          if(Serial.available() > 0)
+          {
+            if(Serial.read() == 'P')
+            {
+              paused = false;
+            }
+          }
+        }
       break;
 
       case 's':
@@ -561,9 +534,7 @@ void pc_coms()
 
       case 'r':
         resistance = Serial.parseFloat();
-        if(resistance > 63.75) resistance = 63.75;
-        load_Val = (int)(resistance*4);
-        set_load(load_Val);
+        set_load(resistance);
       break;
 
       case 'p':
@@ -729,16 +700,19 @@ void read_sensors()
 }
 
 //---------------------------------------------------------------------------------------
-void set_load(uint8_t val)
+void set_load(float r)
 {
-  digitalWriteFast(32, bitRead(val, 0));  //LSB
-  digitalWriteFast(31, bitRead(val, 1));
-  digitalWriteFast(30, bitRead(val, 2));
-  digitalWriteFast(29, bitRead(val, 3));
-  digitalWriteFast(28, bitRead(val, 4));
-  digitalWriteFast(27, bitRead(val, 5));
-  digitalWriteFast(26, bitRead(val, 6));
-  digitalWriteFast(25, bitRead(val, 7));  //MSB
+  resistance = r;
+  if(r > 63.75) resistance = 63.75;
+  load_Val = (int)(resistance*4);
+  digitalWriteFast(32, bitRead(load_Val, 0));  //LSB
+  digitalWriteFast(31, bitRead(load_Val, 1));
+  digitalWriteFast(30, bitRead(load_Val, 2));
+  digitalWriteFast(29, bitRead(load_Val, 3));
+  digitalWriteFast(28, bitRead(load_Val, 4));
+  digitalWriteFast(27, bitRead(load_Val, 5));
+  digitalWriteFast(26, bitRead(load_Val, 6));
+  digitalWriteFast(25, bitRead(load_Val, 7));  //MSB
 }
 
 //---------------------------------------------------------------------------------------
