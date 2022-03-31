@@ -32,8 +32,8 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 bool EntryScreen = true;
 
 unsigned timeWS= 15000;
-double minWindSpeed = 2.5;
-double maxWindSpeed = 12.0;
+double minWindSpeed = 12.0;
+double maxWindSpeed = 16.0;
 double incWindSpeed = 0.5;
 bool staticWS = false;
 bool incrementingWS;
@@ -45,17 +45,17 @@ int incAlpha = 0;
 bool incrementingAlpha;
 bool staticAlpha = false;
 
-unsigned timeLoad = 1000;
-float minLoad = 3.5;
-float maxLoad = 3.5;
-float incLoad = 0;
+unsigned timeLoad = 4000;
+float minLoad = 1;
+float maxLoad = 4;
+float incLoad = 1;
 bool incrementingLoad;
 bool staticLoad = false;
 
-unsigned timeTheta = 1000;
-uint16_t minTheta = 2000;
-uint16_t maxTheta = 2000;
-uint16_t incTheta = 0;
+unsigned timeTheta = 4000;
+uint16_t minTheta = 200;
+uint16_t maxTheta = 3200;
+uint16_t incTheta = 600;
 bool incrementingTheta;
 bool staticTheta = false;
 
@@ -473,8 +473,8 @@ void manage_state(){
       //Emergency switch condition
       if(E_Switch)
       {
-        //move theta to optimal position
-        //flip pcc_relay low
+        theta = 2000;
+        PCC_Relay = false;
         State = Normal;
       }
       break;
@@ -482,13 +482,13 @@ void manage_state(){
     case Safety2:
       
       theta = 100;
-      //maybe flip pcc_relay high? 
+      PCC_Relay = true;
 
       //Discontinuity Condition
       if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
       {
-        //flip pcc_relay high
-        //send theta to optimal position
+        PCC_Relay = false;
+        theta = 2000;
         State = Normal;
       }
       break;

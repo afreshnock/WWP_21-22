@@ -236,7 +236,7 @@ void uart_RX()
       //Read bytes, store in temp
       uint8_t temp1 = Serial1.read();
       uint16_t temp2_h = Serial1.read();
-      uint16_t temp2_l = Serial1.read();\
+      uint16_t temp2_l = Serial1.read();
       uint8_t temp3 = Serial1.read();
       uint8_t temp4 = Serial1.read();
 
