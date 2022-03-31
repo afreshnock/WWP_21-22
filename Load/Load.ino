@@ -14,10 +14,10 @@ float med_r = 2.5;
 float maxpwr_r = 1.5;
 
 //Preset Go-to theta angles
-float cutin_t = 1400;
-float maxpwr_t = 800;
-float brake_t = 3200;
-float reg_t = 1400;
+float cutin_t = 38.0221;
+float maxpwr_t = 18.8821;
+float brake_t = 95;
+float reg_t = 38.0221;
 
 //Preset alpha angles
 uint8_t norm_a = 0;
@@ -25,6 +25,12 @@ uint8_t pwrreg_a = 30;
 
 uint16_t min_pitch_pwr = 2000;
 uint16_t min_turb_v = 3300;
+
+uint16_t k1 = 1;
+uint16_t k2 = 1;
+uint16_t k3 = 1;
+uint16_t thresh = 3800;
+
 
 
 //Load Variables
@@ -39,7 +45,10 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
 float resistance;
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint16_t theta;      //Active Pitch angle            (degrees)
+//       theta_pos = (int)(31.3479*theta + 208.084)
+uint16_t theta_pos; 
+//    theta = (0.0319*theta_pos - 6.6379)   -- might need offest
+float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
 double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
@@ -69,7 +78,7 @@ void setup()
 
   set_load(cutin_r);
   PCC_Relay = false;
-  theta = cutin_t;
+  set_theta(cutin_t);
   alpha = norm_a;
 }
 
@@ -103,7 +112,8 @@ void loop()
       + "," + windspeed
       + "," + E_Switch 
       + "," + alpha 
-      + "," + theta 
+      + "," + theta
+      + "," + theta_pos
       + "," + resistance 
       + "," + load_Val 
       + "," + L_Voltage 
@@ -135,7 +145,7 @@ void manage_state(){
       if(T_Power >= min_pitch_pwr)
       {
         if(PCC_Relay) PCC_Relay = false;
-        theta = maxpwr_t; // to be optimized
+        set_theta(maxpwr_t); // to be optimized
         set_load(med_r);
       }
       if(T_Voltage >= min_turb_v)
@@ -166,7 +176,7 @@ void manage_state(){
       
       if(RPM > 3000)
       {
-        theta--; // to be optimized
+        set_theta( theta=- 0.1); // to be optimized
         set_load(med_r);
         if(RPM > 4000)
         {
@@ -197,28 +207,28 @@ void manage_state(){
       
     case Safety1:
       //do safety1 stuff
-      theta = brake_t;
+      set_theta(brake_t);
       PCC_Relay = true;
 
       //Emergency switch condition
       if(E_Switch)
       {
         //Move to Safety1
-        theta = cutin_t;
+        set_theta(cutin_t);
         State = Wait;
       }
       break;
 
     case Safety2:
       //Do safety2 stuff?
-      theta = brake_t;
+      set_theta(brake_t);
       PCC_Relay = true;
 
       //Discontinuity Condition
       if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
       {
         //Move to Safety2
-        theta = cutin_t;
+        set_theta(cutin_t);
         State = Wait;
       }
       break;
@@ -256,7 +266,7 @@ void pc_coms()
       break;
 
       case 't':
-        theta = Serial.parseInt();
+        set_theta(Serial.parseFloat());
       break;
 
       case 'a':
@@ -334,8 +344,8 @@ void pc_coms()
         Serial.print("(a) Alpha: ");
         Serial.println(alpha);
 
-        Serial.print("(t) Theta (100 - 3380): ");
-        Serial.println(theta);
+        Serial.print("(t) Theta (0 - 95): ");
+        Serial.println(0.0319*theta_pos - 6.6379);
 
         Serial.print("(r) Load: ");
         Serial.print((float)load_Val/255*63.75);
@@ -428,6 +438,7 @@ void set_load(float r)
 {
   resistance = r;
   if(r > 63.75) resistance = 63.75;
+  if(r < 1) resistance = 1;
   load_Val = (int)(resistance*4);
   digitalWriteFast(32, bitRead(load_Val, 0));  //LSB
   digitalWriteFast(31, bitRead(load_Val, 1));
@@ -437,6 +448,15 @@ void set_load(float r)
   digitalWriteFast(27, bitRead(load_Val, 5));
   digitalWriteFast(26, bitRead(load_Val, 6));
   digitalWriteFast(25, bitRead(load_Val, 7));  //MSB
+}
+
+//---------------------------------------------------------------------------------------
+void set_theta(float t)
+{
+  theta = t;
+  if(t > 95.0) theta = 95.0;
+  if(t < 0) theta = 0;
+  theta_pos = (int)(31.3479*theta + 208.084);
 }
 
 //---------------------------------------------------------------------------------------
@@ -475,8 +495,8 @@ void uart_TX()
 {
   Serial1.write('S');             //Start byte
   Serial1.write(alpha);           //Alpha
-  Serial1.write(highByte(theta));           //Theta
-  Serial1.write(lowByte(theta));           //Theta
+  Serial1.write(highByte(theta_pos));           //Theta
+  Serial1.write(lowByte(theta_pos));           //Theta
   Serial1.write((byte)State);     //State
   Serial1.write(PCC_Relay);
   Serial1.write('E');             //End byte
