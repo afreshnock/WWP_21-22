@@ -8,6 +8,25 @@ Adafruit_INA260 ina260 = Adafruit_INA260();
 enum States {Wait, Normal, Regulate, Safety1, Safety2};
 States State = Wait;
 
+//Preset Go-to resistances
+float cutin_r = 5;
+float med_r = 2.5;
+float maxpwr_r = 1.5;
+
+//Preset Go-to theta angles
+float cutin_t = 1400;
+float maxpwr_t = 800;
+float brake_t = 3200;
+float reg_t = 1400;
+
+//Preset alpha angles
+uint8_t norm_a = 0;
+uint8_t pwrreg_a = 30;
+
+uint16_t min_pitch_pwr = 2000;
+uint16_t min_turb_v = 3300;
+
+
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
 uint16_t L_Voltage; //Load Voltage (mV)
@@ -18,111 +37,74 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
+float resistance;
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint16_t theta;      //Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
+double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
-uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
 
-unsigned long Timer_50;
-unsigned long Timer_250;
-unsigned long Timer_1000;
+unsigned long Timer_Fast;
+unsigned long Timer_Slow;
+unsigned long Timer_Log;
+unsigned long Comms_Timeout;
+
+unsigned Fast_Interval = 50;
+unsigned Slow_Interval = 250;
+unsigned Log_Interval = 500;
+
+bool Turbine_Comms;
 bool PCC_Relay;
 
 //---------------------------------------------------------------------------------------
 void setup()
 {
-  //init K coeffs
-  k1, k2, k3 = 1;
-  //tunnel_setting = 0;
-  thresh = 100;
-  //UART1 (to turbine)
-  pinMode(1, OUTPUT); //TX1
-  pinMode(0, INPUT);  //RX1
+  init_pins();
+  init_coms();
+  init_timers();
 
-  //I2C (to INA260)
-  pinMode(18, OUTPUT); //SDA1
-  pinMode(19, OUTPUT); //SCL1
-
-  //Heatsink Fan Enable
-  pinMode(20, OUTPUT);
-
-  //PCC I/O Relay
-  pinMode(24, OUTPUT);
-
-  //Load control I/O
-  pinMode(25, OUTPUT);  //MSB
-  pinMode(26, OUTPUT);
-  pinMode(27, OUTPUT);
-  pinMode(28, OUTPUT);
-  pinMode(29, OUTPUT);
-  pinMode(30, OUTPUT);
-  pinMode(31, OUTPUT);
-  pinMode(32, OUTPUT);  //LSB
-
-  //5V monitor (analog)
-  pinMode(41, INPUT);
-
-  //start comms with INA260
-  ina260.begin();
-  load_Val = 255;
-  set_load(load_Val);
-  
-  //Turbine-Load UART
-  Serial1.begin(9600);
-
-  //Set up coms with PC
-  Serial.begin(9600);
-  
-  //set up timers
-  Timer_50 = millis();
-  Timer_250 = millis();
-  Timer_1000 = millis();
-  
-  try_SD_begin(BUILTIN_SDCARD);
-
+  set_load(cutin_r);
   PCC_Relay = false;
-  theta = 2000;
+  theta = cutin_t;
+  alpha = norm_a;
 }
 
 //---------------------------------------------------------------------------------------
 void loop()
 {
   uart_RX();
-  if(millis() - Timer_50 >= 50)
+  if(millis() - Timer_Fast >= Fast_Interval)
   {
-    Timer_50 = millis();
-    //*********Code that runs all the time independent of the State**********
+    Timer_Fast = millis();
+
     fan_ctrl();
     track_peaks();
     read_sensors();
-    //***********************************************************************
-  
-    //*********Code that runs dependent of the current machine State*********
     manage_state();
-    //***********************************************************************
   }
-  if(millis() - Timer_250 >= 250)
+  if(millis() - Timer_Slow >= Slow_Interval)
   {
-    Timer_250 = millis();
-    //unsigned long ts = micros();
+    Timer_Slow = millis();
+
     uart_TX();
     pc_coms();
-
-    //Serial.println(micros() - ts);
   }
   
-  if(millis() - Timer_1000 >= 1000){
-    Timer_1000 = millis();
+  if(millis() - Timer_Log >= Log_Interval)
+  {
+    Timer_Log = millis();
+
     try_Log_Data((String)
               RPM
+      + "," + windspeed
       + "," + E_Switch 
       + "," + alpha 
       + "," + theta 
+      + "," + resistance 
       + "," + load_Val 
       + "," + L_Voltage 
       + "," + L_Current 
@@ -130,14 +112,8 @@ void loop()
       + "," + T_Voltage
       + "," + T_Power
       + "," + State
-      + "," + k1
-      + "," + k2
-      + "," + k3
-      + "," + thresh
-      + "," + tunnel_setting
     );
   }
-  
 }
 
 //---------------------------------------------------------------------------------------
@@ -146,9 +122,9 @@ void manage_state(){
   {
     case Wait:
       //If load recieves data from turbine, enter normal operation
-      if (RPM != 0)
+
+      if(Turbine_Comms)
       {
-        //Do something
         State = Normal;
       }
       break;
@@ -156,40 +132,54 @@ void manage_state(){
     case Normal:
       //Optimize for power
       
-
-      //If overspeed
-      if(RPM + k1*theta + k2*alpha + k3*load_Val > thresh)
+      if(T_Power >= min_pitch_pwr)
+      {
+        if(PCC_Relay) PCC_Relay = false;
+        theta = maxpwr_t; // to be optimized
+        set_load(med_r);
+      }
+      if(T_Voltage >= min_turb_v)
+      {
+        set_load(maxpwr_r); // to be optimized
+      }
+      if(RPM > 3000)
       {
         State = Regulate;
+      }
+
+      //Emergency switch condition
+      if(!E_Switch)
+      {
+        //Move to Safety1
+        State = Safety1;
       }
       //Discontinuity Condition
       if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
       {
         //Move to Safety2
-        State = Safety2;
-      }
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
         State = Safety2;
       }
       break;
 
     case Regulate:
       //Regulate RPM at 11m/s val (PID? keep at val)
-
-
-      //back to normal run state
-      if(RPM + k1*theta + k2*alpha + k3*load_Val < thresh)
+      
+      if(RPM > 3000)
+      {
+        theta--; // to be optimized
+        set_load(med_r);
+        if(RPM > 4000)
+        {
+          alpha = pwrreg_a;
+        }
+        else
+        {
+          alpha = norm_a;
+        }
+      }
+      else
       {
         State = Normal;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
       }
       //Emergency switch condition
       if(!E_Switch)
@@ -197,29 +187,39 @@ void manage_state(){
         //Move to Safety1
         State = Safety1;
       }
+      //Discontinuity Condition
+      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
+      {
+        //Move to Safety2
+        State = Safety2;
+      }
       break;
       
     case Safety1:
       //do safety1 stuff
-
+      theta = brake_t;
+      PCC_Relay = true;
 
       //Emergency switch condition
       if(E_Switch)
       {
         //Move to Safety1
-        State = Normal;
+        theta = cutin_t;
+        State = Wait;
       }
       break;
 
     case Safety2:
       //Do safety2 stuff?
-
+      theta = brake_t;
+      PCC_Relay = true;
 
       //Discontinuity Condition
       if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
       {
         //Move to Safety2
-        State = Regulate;
+        theta = cutin_t;
+        State = Wait;
       }
       break;
 
@@ -246,8 +246,8 @@ void pc_coms()
       break;
 
       case 'r':
-        load_Val = Serial.parseInt();
-        set_load(load_Val);
+        resistance = Serial.parseFloat();
+        set_load(resistance);
       break;
 
       case 'p':
@@ -262,25 +262,9 @@ void pc_coms()
       case 'a':
         alpha = Serial.parseInt();
       break;
-
-      case '1':
-        k1 = Serial.parseInt();
-      break;
-
-      case '2':
-        k2 = Serial.parseInt();
-      break;
-
-      case '3':
-        k3 = Serial.parseInt();
-      break;
-
-      case 'h':
-        thresh = Serial.parseInt();
-      break;
       
       case 'w':
-        tunnel_setting = Serial.parseInt();
+        set_windspeed(Serial.parseFloat());
        
       default:
         Serial.println("Command not recognized");
@@ -288,7 +272,6 @@ void pc_coms()
     }
   }
 
-//---------------------------------------------------------------------------------------
   if(Serial) // check performance cost on checking if serial is active
     {
         Serial.print("RPM: ");
@@ -305,10 +288,6 @@ void pc_coms()
         Serial.print("Load Power: ");
         Serial.print(L_Power);
         Serial.println(" mW");
-
-        Serial.print("Calculated Power: ");
-        Serial.print((float) L_Voltage * L_Current / 1000000);
-        Serial.println(" W");
 
         Serial.print("Tubine Voltage: ");
         Serial.print(T_Voltage);
@@ -362,15 +341,6 @@ void pc_coms()
         Serial.print((float)load_Val/255*63.75);
         Serial.println(" Ohms");
         
-        Serial.println("(1)-k1 / (2)-k2 / (3)-k3 / (h)-thressh: ");
-        Serial.println((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
-        
-        //Serial.println("RPM + k1*theta + k2*alpha + k3*load_Val > thresh");
-        Serial.print("Overspeed Condition: ");
-        Serial.print(RPM + k1*theta + k2*alpha + k3*load_Val);
-        Serial.print(" > ");
-        Serial.println(thresh);
-        
         Serial.print("(s) Logging: ");
         if(Logging){
           Serial.println("True");
@@ -384,6 +354,68 @@ void pc_coms()
 }
 
 //---------------------------------------------------------------------------------------
+void set_windspeed(double ws)
+{
+  windspeed = ws;
+  double temp = (0.303 + 18.7 * windspeed + -0.67 * pow(windspeed,2) + 0.0317 * pow(windspeed,3));
+  if(temp > 255){
+    temp = 255;
+  }
+  tunnel_setting = (uint8_t)temp;
+}
+
+//---------------------------------------------------------------------------------------
+void init_pins()
+{
+  //UART1 (to turbine)
+  pinMode(1, OUTPUT); //TX1
+  pinMode(0, INPUT);  //RX1
+
+  //I2C (to INA260)
+  pinMode(18, OUTPUT); //SDA1
+  pinMode(19, OUTPUT); //SCL1
+
+  //Heatsink Fan Enable
+  pinMode(20, OUTPUT);
+
+  //PCC I/O Relay
+  pinMode(24, OUTPUT);
+
+  //Load control I/O
+  pinMode(25, OUTPUT);  //MSB
+  pinMode(26, OUTPUT);
+  pinMode(27, OUTPUT);
+  pinMode(28, OUTPUT);
+  pinMode(29, OUTPUT);
+  pinMode(30, OUTPUT);
+  pinMode(31, OUTPUT);
+  pinMode(32, OUTPUT);  //LSB
+
+  //5V monitor (analog)
+  pinMode(41, INPUT);
+
+  analogWriteFrequency(6, 200000);
+  analogWriteResolution(8);
+}
+
+//---------------------------------------------------------------------------------------
+void init_coms()
+{
+  ina260.begin();
+  Serial1.begin(9600);
+  Serial.begin(9600);
+  try_SD_begin(BUILTIN_SDCARD);
+}
+
+//---------------------------------------------------------------------------------------
+void init_timers()
+{
+  Timer_Fast = millis();
+  Timer_Slow = millis();
+  Timer_Log = millis();
+}
+
+//---------------------------------------------------------------------------------------
 void read_sensors()
 {
   L_Voltage = ina260.readBusVoltage();
@@ -392,16 +424,19 @@ void read_sensors()
 }
 
 //---------------------------------------------------------------------------------------
-void set_load(uint8_t val)
+void set_load(float r)
 {
-  digitalWriteFast(32, bitRead(val, 0));  //LSB
-  digitalWriteFast(31, bitRead(val, 1));
-  digitalWriteFast(30, bitRead(val, 2));
-  digitalWriteFast(29, bitRead(val, 3));
-  digitalWriteFast(28, bitRead(val, 4));
-  digitalWriteFast(27, bitRead(val, 5));
-  digitalWriteFast(26, bitRead(val, 6));
-  digitalWriteFast(25, bitRead(val, 7));  //MSB
+  resistance = r;
+  if(r > 63.75) resistance = 63.75;
+  load_Val = (int)(resistance*4);
+  digitalWriteFast(32, bitRead(load_Val, 0));  //LSB
+  digitalWriteFast(31, bitRead(load_Val, 1));
+  digitalWriteFast(30, bitRead(load_Val, 2));
+  digitalWriteFast(29, bitRead(load_Val, 3));
+  digitalWriteFast(28, bitRead(load_Val, 4));
+  digitalWriteFast(27, bitRead(load_Val, 5));
+  digitalWriteFast(26, bitRead(load_Val, 6));
+  digitalWriteFast(25, bitRead(load_Val, 7));  //MSB
 }
 
 //---------------------------------------------------------------------------------------
@@ -443,6 +478,7 @@ void uart_TX()
   Serial1.write(highByte(theta));           //Theta
   Serial1.write(lowByte(theta));           //Theta
   Serial1.write((byte)State);     //State
+  Serial1.write(PCC_Relay);
   Serial1.write('E');             //End byte
 }
 
@@ -457,6 +493,8 @@ void uart_RX()
     //Check for start byte
     if (Serial1.read()  == 'S')
     {
+      Comms_Timeout = millis();
+      Turbine_Comms = true;
       //Read bytes, store in temp255
       uint16_t temp1_h = Serial1.read();
       uint16_t temp1_l = Serial1.read();
@@ -476,5 +514,14 @@ void uart_RX()
         E_Switch = temp4;
       }
     }
+  }
+  //If no data is recieved in the time that 2 packets are expected to be recieved, the turbine is assumed disconnected/off.
+  if(millis() - Comms_Timeout >= 2*Slow_Interval)
+  {
+    Comms_Timeout = millis();
+    Turbine_Comms = false;
+    RPM = 0;
+    T_Power = 0;
+    T_Voltage = 0;
   }
 } //hello 
