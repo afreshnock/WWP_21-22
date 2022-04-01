@@ -35,7 +35,7 @@ char SerialRead2;
 // drop G1 and G2 const char Stages[6] = {~0b00100000, ~0b00000000, ~0b00010000, ~0b00010010, ~0b01000010, ~0b01100000};
 //const char Stages[6] = {~0b00000001, ~0b10000001, ~0b10010000, ~0b00010010, ~0b00000010, ~0b00000000};
 
-const char Stages[6] = {~0b01100000, ~0b00100001, ~0b10000001, ~0b10010000, ~0b00010010, ~0b01000010};
+const byte Stages[6] = {~0b01100000, ~0b00100001, ~0b10000001, ~0b10010000, ~0b00010010, ~0b01000010};
 
 volatile unsigned long StageChange = 60;
 
@@ -157,7 +157,7 @@ void receiveEvent() {
 
           alpha = i2cInput;
 
-          Serial.println(alpha);
+          //Serial.println(alpha);
 
         }
 
@@ -173,9 +173,9 @@ void receiveEvent() {
 
 void alphaSend() {
 
-  Serial.print("REQUEST = ");
+  //Serial.print("REQUEST = ");
 
-  Serial.println(alpha);
+  //Serial.println(alpha);
 
   Wire.write('a');
 
@@ -192,7 +192,6 @@ void loop() {
 
 
 ISR(TIMER1_COMPA_vect) { //Output
-  cli();
   //TCNT1  = 0;                  //First, set the timer back to 0 so it resets for next interrupt
 
   phase = phase + 5;
@@ -220,13 +219,11 @@ ISR(TIMER1_COMPA_vect) { //Output
     phase -= 360;
 
   }
-  sei();
 }
 
 
 
 ISR(TIMER3_CAPT_vect) { // Input Capture from hall effect
-  cli();
   i = ICR3;
 
   avg4 = avg3;
@@ -264,5 +261,4 @@ ISR(TIMER3_CAPT_vect) { // Input Capture from hall effect
   }
 
   TCNT3 = 0x0000;        // restart timer for next revolution
-  sei();
 }
