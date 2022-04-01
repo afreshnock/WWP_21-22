@@ -23,6 +23,7 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Voltage (mV)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
+uint8_t old_alpha;
 uint16_t theta = 2000;      //Active Pitch angle   
 bool E_Switch;      //Bool indicating switch open
 
@@ -100,8 +101,12 @@ void loop()
     Timer_250 = millis();
     
     uart_TX();
-    AR_TX();
-    AR_RX();
+    if(old_alpha != alpha)
+    {
+      old_alpha = alpha;
+      AR_TX();
+      AR_RX();
+    }
     pc_coms();
     digitalWrite(14, PCC_Relay);
     myServo.goalPosition(ID_NUM, theta);

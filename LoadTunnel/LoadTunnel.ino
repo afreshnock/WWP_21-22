@@ -157,7 +157,7 @@ void loop()
     //***********************************************************************
   
     //*********Code that runs dependent of the current machine State*********
-    if(TestState == Man) manage_state();
+    //if(TestState == Man) manage_state();
     //***********************************************************************
   }
   if(millis() - Timer_250 >= State_Interval)
