@@ -122,7 +122,7 @@ void setup() {
 
 
 void receiveEvent() {
-
+  //sei();
   while (Wire.available()) {
 
     if (!n) {
@@ -172,7 +172,7 @@ void receiveEvent() {
 
 
 void alphaSend() {
-
+  //sei();
   //Serial.print("REQUEST = ");
 
   //Serial.println(alpha);
