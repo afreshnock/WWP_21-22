@@ -58,7 +58,7 @@ void setup()
   
   //start comms with active rectifier
   Wire.begin();
-  Wire.SetClock(400000);
+  Wire.setClock(400000);
   
   //start comms with INA260
   ina260.begin();

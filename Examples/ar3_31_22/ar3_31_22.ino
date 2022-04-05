@@ -52,15 +52,14 @@ unsigned int avg1, avg2, avg3, avg4;
 
 
 void setup() {
-
+/*
   Serial.begin(115200);
-
   Wire.begin(0x08);
 
   Wire.onReceive(receiveEvent);
 
   Wire.onRequest(alphaSend);
-
+*/
 
 
   pinMode(18, OUTPUT);
@@ -120,7 +119,7 @@ void setup() {
 }
 
 
-
+/*
 void receiveEvent() {
   //sei();
   while (Wire.available()) {
@@ -182,7 +181,7 @@ void alphaSend() {
   Wire.write(alpha);
 
 }
-
+*/
 
 
 void loop() {
@@ -193,7 +192,7 @@ void loop() {
 
 ISR(TIMER1_COMPA_vect) { //Output
   //TCNT1  = 0;                  //First, set the timer back to 0 so it resets for next interrupt
-
+  sei();
   phase = phase + 5;
 
   if (phase >= StageChange) {
@@ -224,6 +223,7 @@ ISR(TIMER1_COMPA_vect) { //Output
 
 
 ISR(TIMER3_CAPT_vect) { // Input Capture from hall effect
+
   i = ICR3;
 
   avg4 = avg3;
@@ -242,7 +242,7 @@ ISR(TIMER3_CAPT_vect) { // Input Capture from hall effect
 
 
 
-    OCR1A = (float) i * 3.555; //14.222 is 1024 // 3.555 is 256
+    OCR1A =  i * 3.555; //14.222 is 1024 // 3.555 is 256
 
     phase = alpha + 55;
 
