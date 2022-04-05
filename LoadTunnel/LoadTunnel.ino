@@ -334,7 +334,7 @@ void manage_sim_state(){
     case StepAlpha:
         if(!staticAlpha)
         {
-          timeT = timeAlpha;
+          timeT += timeAlpha;
           if(alpha + incAlpha <= maxAlpha)
           {
             alpha += incAlpha;
@@ -355,7 +355,7 @@ void manage_sim_state(){
     case StepTheta:
         if(!staticTheta)
         {
-          timeT = timeTheta;
+          timeT += timeTheta;
           if(theta + incTheta <= maxTheta)
           {
             theta += incTheta;
@@ -376,7 +376,7 @@ void manage_sim_state(){
     case StepWS:
         if(!staticWS)
         {
-          timeT = timeWS;
+          timeT += timeWS;
           if(windspeed + incWindSpeed <= maxWindSpeed)
           {
             windspeed += incWindSpeed;
