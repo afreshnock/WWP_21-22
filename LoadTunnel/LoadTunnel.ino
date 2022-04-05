@@ -23,7 +23,10 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
 float resistance;
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint16_t theta;      //Active Pitch angle            (degrees)
+//       theta_pos = (int)(31.3479*theta + 208.084)
+uint16_t theta_pos; 
+//    theta = (0.0319*theta_pos - 6.6379)   -- might need offest
+float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
 double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
@@ -53,9 +56,9 @@ bool incrementingLoad;
 bool staticLoad = false;
 
 unsigned timeTheta = 4000;
-uint16_t minTheta = 200;
-uint16_t maxTheta = 3200;
-uint16_t incTheta = 600;
+uint16_t minTheta = 0;
+uint16_t maxTheta = 90;
+uint16_t incTheta = 30;
 bool incrementingTheta;
 bool staticTheta = false;
 
@@ -138,7 +141,7 @@ void setup()
 
   PCC_Relay = false;
   Auto_PCC = false;
-  theta = minTheta;
+  set_theta(minTheta);
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
 }
@@ -188,10 +191,11 @@ void loop()
     Timer_Log = millis();
     try_Log_Data((String)
               RPM
-      + "," + windspeed 
+      + "," + windspeed
       + "," + E_Switch 
       + "," + alpha 
-      + "," + theta 
+      + "," + theta
+      + "," + theta_pos
       + "," + resistance 
       + "," + load_Val 
       + "," + L_Voltage 
@@ -200,14 +204,8 @@ void loop()
       + "," + T_Voltage
       + "," + T_Power
       + "," + State
-      + "," + k1
-      + "," + k2
-      + "," + k3
-      + "," + thresh
-      + "," + tunnel_setting
     );
   }
-  
 }
 
 //---------------------------------------------------------------------------------------
@@ -268,7 +266,7 @@ void manage_sim_state(){
         
         set_load(minLoad);
         alpha = minAlpha;
-        theta = minTheta;
+        set_theta(minTheta);
         set_windspeed(minWindSpeed);
 
         Serial.println("Automatic Testing Initializing");
@@ -294,7 +292,7 @@ void manage_sim_state(){
         Serial.println(t);
         Timer_T = millis();
         TestState = StepLoad;
-        timeT = loadTime;
+        timeT = timeWS;
       }
       else
       {
@@ -358,12 +356,12 @@ void manage_sim_state(){
           timeT += timeTheta;
           if(theta + incTheta <= maxTheta)
           {
-            theta += incTheta;
+            set_theta(theta + incTheta);
             TestState = StepLoad;
           }
           else
           {
-            theta = minTheta;
+            set_theta(minTheta);
             TestState = StepWS;
           }
         }
@@ -467,13 +465,13 @@ void manage_state(){
       
     case Safety1:
       
-      theta = 100;
+      set_theta(100);
       PCC_Relay = true;
 
       //Emergency switch condition
       if(E_Switch)
       {
-        theta = 2000;
+        set_theta(2000);
         PCC_Relay = false;
         State = Normal;
       }
@@ -481,14 +479,14 @@ void manage_state(){
 
     case Safety2:
       
-      theta = 100;
+      set_theta(100);
       PCC_Relay = true;
 
       //Discontinuity Condition
       if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
       {
         PCC_Relay = false;
-        theta = 2000;
+        set_theta(2000);
         State = Normal;
       }
       break;
@@ -556,7 +554,7 @@ void pc_coms()
       break;
 
       case 't':
-        theta = Serial.parseInt();
+        set_theta(Serial.parseFloat());
       break;
 
       case 'a':
@@ -661,8 +659,8 @@ void pc_coms()
         Serial.print("(a) Alpha: ");
         Serial.println(alpha);
 
-        Serial.print("(t) Theta (100 - 3380): ");
-        Serial.println(theta);
+        Serial.print("(t) Theta (0 - 95): ");
+        Serial.println(0.0319*theta_pos - 6.6379);
 
         Serial.print("(r) Load ( 0- 64 ): ");
         Serial.print((float)load_Val/255*63.75);
@@ -725,6 +723,15 @@ void set_load(float r)
 }
 
 //---------------------------------------------------------------------------------------
+void set_theta(float t)
+{
+  theta = t;
+  if(t > 95.0) theta = 95.0;
+  if(t < 0) theta = 0;
+  theta_pos = (int)(31.3479*theta + 208.084);
+}
+
+//---------------------------------------------------------------------------------------
 uint8_t fan_ctrl()
 {
   //This function turns the fan on when load power exceeds 10W.
@@ -760,8 +767,8 @@ void uart_TX()
 {
   Serial1.write('S');             //Start byte
   Serial1.write(alpha);           //Alpha
-  Serial1.write(highByte(theta));           //Theta
-  Serial1.write(lowByte(theta));           //Theta
+  Serial1.write(highByte(theta_pos));           //Theta
+  Serial1.write(lowByte(theta_pos));           //Theta
   Serial1.write((byte)State);     //State
   Serial1.write(PCC_Relay);
   Serial1.write('E');             //End byte

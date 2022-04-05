@@ -192,7 +192,6 @@ void loop() {
 
 ISR(TIMER1_COMPA_vect) { //Output
   //TCNT1  = 0;                  //First, set the timer back to 0 so it resets for next interrupt
-  sei();
   phase = phase + 5;
 
   if (phase >= StageChange) {

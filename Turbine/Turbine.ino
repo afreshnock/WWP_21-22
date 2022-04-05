@@ -25,6 +25,7 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t old_alpha;
 uint16_t theta = 2000;      //Active Pitch angle   
+bool last_E_Switch;
 bool E_Switch;      //Bool indicating switch open
 
 //IDK Variables
@@ -32,6 +33,8 @@ uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 const int Safety_SW = 17;
 
+unsigned E_Switch_Pulse;
+unsigned long Timer_E_Switch;
 unsigned long Timer_50;
 unsigned long Timer_250;
 
@@ -55,6 +58,7 @@ void setup()
   pinMode(14, OUTPUT);
   pinMode(Safety_SW, INPUT);
   E_Switch = digitalRead(Safety_SW);
+  last_E_Switch = E_Switch;
   
   //start comms with active rectifier
   Wire.begin();
@@ -93,6 +97,7 @@ void loop()
     //*********Code that runs all the time independent of the State**********
     RPM = outputRPM;
     read_Sensors();
+    check_E_Switch(E_Switch);
     //***********************************************************************
   
   }
@@ -178,6 +183,18 @@ void pc_coms()
 
     Serial.println();
   }
+}
+
+
+//---------------------------------------------------------------------------------------
+void check_E_Switch(bool switch_State)
+{
+    if(last_E_Switch != E_Switch)
+    {
+      last_E_Switch = E_Switch;
+      Timer_E_Switch = millis();
+    }
+  if(millis() - Timer_E_Switch >= E_Switch 
 }
 
 //---------------------------------------------------------------------------------------
