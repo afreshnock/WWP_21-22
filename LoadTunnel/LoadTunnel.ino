@@ -32,8 +32,8 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 bool EntryScreen = true;
 
 unsigned timeWS= 15000;
-double minWindSpeed = 2.5;
-double maxWindSpeed = 12.0;
+double minWindSpeed = 12.0;
+double maxWindSpeed = 16.0;
 double incWindSpeed = 0.5;
 bool staticWS = false;
 bool incrementingWS;
@@ -45,17 +45,17 @@ int incAlpha = 0;
 bool incrementingAlpha;
 bool staticAlpha = false;
 
-unsigned timeLoad = 1000;
-float minLoad = 3.5;
-float maxLoad = 3.5;
-float incLoad = 0;
+unsigned timeLoad = 4000;
+float minLoad = 1;
+float maxLoad = 4;
+float incLoad = 1;
 bool incrementingLoad;
 bool staticLoad = false;
 
-unsigned timeTheta = 1000;
-uint16_t minTheta = 2000;
-uint16_t maxTheta = 2000;
-uint16_t incTheta = 0;
+unsigned timeTheta = 4000;
+uint16_t minTheta = 200;
+uint16_t maxTheta = 3200;
+uint16_t incTheta = 600;
 bool incrementingTheta;
 bool staticTheta = false;
 
@@ -64,7 +64,7 @@ unsigned timeT;
 bool paused = false; 
 //-------------------------------------------------------------------------------------
 unsigned logInterval = 250;
-
+unsigned State_Interval = 250;
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
@@ -73,6 +73,8 @@ uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
 unsigned long Timer_50;
 unsigned long Timer_250;
 unsigned long Timer_Log;
+unsigned long Comms_Timeout;
+bool Turbine_Comms;
 
 unsigned long Timer_T;
 
@@ -155,10 +157,10 @@ void loop()
     //***********************************************************************
   
     //*********Code that runs dependent of the current machine State*********
-    manage_state();
+    //if(TestState == Man) manage_state();
     //***********************************************************************
   }
-  if(millis() - Timer_250 >= 250)
+  if(millis() - Timer_250 >= State_Interval)
   {
     Timer_250 = millis();
     //unsigned long ts = micros();
@@ -332,7 +334,7 @@ void manage_sim_state(){
     case StepAlpha:
         if(!staticAlpha)
         {
-          timeT = timeAlpha;
+          timeT += timeAlpha;
           if(alpha + incAlpha <= maxAlpha)
           {
             alpha += incAlpha;
@@ -353,7 +355,7 @@ void manage_sim_state(){
     case StepTheta:
         if(!staticTheta)
         {
-          timeT = timeTheta;
+          timeT += timeTheta;
           if(theta + incTheta <= maxTheta)
           {
             theta += incTheta;
@@ -374,7 +376,7 @@ void manage_sim_state(){
     case StepWS:
         if(!staticWS)
         {
-          timeT = timeWS;
+          timeT += timeWS;
           if(windspeed + incWindSpeed <= maxWindSpeed)
           {
             windspeed += incWindSpeed;
@@ -410,7 +412,7 @@ void manage_state(){
     
     case Wait:
       //If load recieves data from turbine, enter normal operation
-      if (RPM != 0)
+      if (Turbine_Comms)
       {
         //Do something
         State = Normal;
@@ -464,26 +466,30 @@ void manage_state(){
       break;
       
     case Safety1:
-      //do safety1 stuff
-
+      
+      theta = 100;
+      PCC_Relay = true;
 
       //Emergency switch condition
       if(E_Switch)
       {
-        //Move to Safety1
+        theta = 2000;
+        PCC_Relay = false;
         State = Normal;
       }
       break;
 
     case Safety2:
-      //Do safety2 stuff?
-
+      
+      theta = 100;
+      PCC_Relay = true;
 
       //Discontinuity Condition
       if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
       {
-        //Move to Safety2
-        State = Regulate;
+        PCC_Relay = false;
+        theta = 2000;
+        State = Normal;
       }
       break;
 
@@ -585,6 +591,9 @@ void pc_coms()
 //---------------------------------------------------------------------------------------
   if(Serial) // check performance cost on checking if serial is active
     {
+        Serial.print("Turbine Connected: ");
+        Serial.println(Turbine_Comms);
+        
         Serial.print("PCC Relay: ");
         Serial.println(PCC_Relay);
 
@@ -769,6 +778,8 @@ void uart_RX()
     //Check for start byte
     if (Serial1.read()  == 'S')
     {
+      Comms_Timeout = millis();
+      Turbine_Comms = true;
       //Read bytes, store in temp255
       uint16_t temp1_h = Serial1.read();
       uint16_t temp1_l = Serial1.read();
@@ -788,5 +799,14 @@ void uart_RX()
         E_Switch = temp4;
       }
     }
+  }
+  //If no data is recieved in the time that 2 packets are expected to be recieved, the turbine is assumed disconnected/off.
+  if(millis() - Comms_Timeout >= 2*State_Interval)
+  {
+    Comms_Timeout = millis();
+    Turbine_Comms = false;
+    RPM = 0;
+    T_Power = 0;
+    T_Voltage = 0;
   }
 } //hello 

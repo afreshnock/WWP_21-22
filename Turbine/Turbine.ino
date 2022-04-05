@@ -23,12 +23,14 @@ uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Voltage (mV)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
+uint8_t old_alpha;
 uint16_t theta = 2000;      //Active Pitch angle   
-bool E_Switch = true;      //Bool indicating switch open
+bool E_Switch;      //Bool indicating switch open
 
 //IDK Variables
 uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
+const int Safety_SW = 17;
 
 unsigned long Timer_50;
 unsigned long Timer_250;
@@ -51,10 +53,13 @@ void setup()
   pinMode(19, OUTPUT); //SCL1
 
   pinMode(14, OUTPUT);
+  pinMode(Safety_SW, INPUT);
+  E_Switch = digitalRead(Safety_SW);
   
   //start comms with active rectifier
   Wire.begin();
-
+  Wire.setClock(400000);
+  
   //start comms with INA260
   ina260.begin();
 
@@ -97,8 +102,12 @@ void loop()
     Timer_250 = millis();
     
     uart_TX();
-    AR_TX();
-    AR_RX();
+    if(old_alpha != alpha)
+    {
+      old_alpha = alpha;
+      AR_TX();
+      AR_RX();
+    }
     pc_coms();
     digitalWrite(14, PCC_Relay);
     myServo.goalPosition(ID_NUM, theta);
@@ -174,6 +183,7 @@ void pc_coms()
 //---------------------------------------------------------------------------------------
 void read_Sensors()
 {
+  E_Switch = digitalRead(Safety_SW);
   T_Voltage = ina260.readBusVoltage();
   T_Power = ina260.readPower();
 }
@@ -200,7 +210,7 @@ void AR_RX()
     if(byte_0 == 'a')
     {
       Serial.print("Active Rectifier Responded: ");
-      Serial.println(byte_1 - 48); //might not need to subtract 0;
+      Serial.println(byte_1); //might not need to subtract 0;
     }
   }
 }
@@ -232,7 +242,7 @@ void uart_RX()
       //Read bytes, store in temp
       uint8_t temp1 = Serial1.read();
       uint16_t temp2_h = Serial1.read();
-      uint16_t temp2_l = Serial1.read();\
+      uint16_t temp2_l = Serial1.read();
       uint8_t temp3 = Serial1.read();
       uint8_t temp4 = Serial1.read();
 

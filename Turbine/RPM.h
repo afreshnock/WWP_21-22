@@ -25,8 +25,8 @@ void RPMRead() {
       //noInterrupts();
       detachInterrupt(digitalPinToInterrupt(Sensor));
       Raw_RPM = 15000000 / (Htime2 - Htime1); //calculate rpm from period
-      if (Raw_RPM < 10000) {
-        if (abs(Raw_RPM - outputRPM) < (SampleInterval * 3)) { //compare new rpm to previous
+      if (Raw_RPM < 6000) {
+        if (abs(Raw_RPM - outputRPM) < (SampleInterval * 6)) { //compare new rpm to previous
           if ( i < 9 ) { //cycle through array
             i++;
           }
@@ -42,7 +42,7 @@ void RPMRead() {
         }
         else {
           F ++; //increment failed compared value
-          if ( F > 10 ) {
+          if ( F > 5 ) {
             outputRPM = Raw_RPM; //reset the comparative value
           }
         }
