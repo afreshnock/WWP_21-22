@@ -241,7 +241,7 @@ ISR(TIMER3_CAPT_vect) { // Input Capture from hall effect
 
 
 
-    OCR1A =  i * 3.555; //14.222 is 1024 // 3.555 is 256
+    OCR1A =  (float)i * 3.555; //14.222 is 1024 // 3.555 is 256
 
     phase = alpha + 55;
 

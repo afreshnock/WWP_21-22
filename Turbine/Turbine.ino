@@ -10,9 +10,11 @@ PA12 myServo(&Serial2, 8, 1);
 //          (&Serial, enable_pin,  Tx Level)
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
+enum Switching_States {S_Wait, Toggled_H, Toggled_L};
+Switching_States Switching_State = S_Wait;
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2};
-States State = Normal;
+States State = Wait;
 
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
@@ -33,10 +35,13 @@ uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 const int Safety_SW = 17;
 
-unsigned E_Switch_Pulse;
+unsigned E_Switch_Wait_Interval = 100;
 unsigned long Timer_E_Switch;
 unsigned long Timer_50;
 unsigned long Timer_250;
+
+int PCC_Relay_Set_Pin = 6;
+int PCC_Relay_Reset_Pin = 7;
 
 bool PCC_Relay = false;
 
@@ -55,11 +60,14 @@ void setup()
   pinMode(18, OUTPUT); //SDA1
   pinMode(19, OUTPUT); //SCL1
 
+  pinMode(PCC_Relay_Reset_Pin, OUTPUT);
+  pinMode(PCC_Relay_Set_Pin, OUTPUT);
+
   pinMode(14, OUTPUT);
   pinMode(Safety_SW, INPUT);
   E_Switch = digitalRead(Safety_SW);
   last_E_Switch = E_Switch;
-  
+
   //start comms with active rectifier
   Wire.begin();
   Wire.setClock(400000);
@@ -93,7 +101,6 @@ void loop()
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
-
     //*********Code that runs all the time independent of the State**********
     RPM = outputRPM;
     read_Sensors();
@@ -138,6 +145,9 @@ void pc_coms()
   {
     Serial.print("RPM: ");
     Serial.println(RPM);
+
+    Serial.print("PCC Relay: ")
+    Serial.println(PCC_Relay);
 
     Serial.print("Alpha: ");
     Serial.println(alpha);
@@ -185,16 +195,46 @@ void pc_coms()
   }
 }
 
-
 //---------------------------------------------------------------------------------------
 void check_E_Switch(bool switch_State)
 {
-    if(last_E_Switch != E_Switch)
-    {
-      last_E_Switch = E_Switch;
-      Timer_E_Switch = millis();
-    }
-  if(millis() - Timer_E_Switch >= E_Switch 
+  switch(Switching_State)
+  {
+    case S_Wait:
+      if(last_E_Switch != E_Switch)
+      {
+        last_E_Switch = E_Switch;
+        Timer_E_Switch = millis();
+
+        if(E_Switch)
+        {
+          digitalWrite(PCC_Relay_Set_Pin, HIGH);
+          Switching_State = Toggled_H;
+        }
+        else
+        {
+          digitalWrite(PCC_Relay_Reset_Pin, HIGH);
+          Switching_State = Toggled_L;
+        }
+      }
+      break;
+
+    case Toggled_H:
+      if(millis() - Timer_E_Switch >= E_Switch_Wait_Interval)
+      {
+        digitalWrite(PCC_Relay_Set_Pin, LOW);
+        Switching_State = S_Wait;
+      }
+      break;
+
+    case Toggled_L:
+      if(millis() - Timer_E_Switch >= E_Switch_Wait_Interval)
+      {
+        digitalWrite(PCC_Relay_Reset_Pin, LOW);
+        Switching_State = S_Wait;
+      }
+      break;
+  }
 }
 
 //---------------------------------------------------------------------------------------
@@ -272,7 +312,6 @@ void uart_RX()
         State = temp3;
         PCC_Relay = temp4;
       }
-      
     }
   }
 } //hello 
