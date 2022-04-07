@@ -23,9 +23,6 @@ void loop() {
     Display = 0;
   }
   if(Serial.available() > 1)  {
-    if(myServo.alarmShutdown(ID_NUM) == 1){
-      myServo.alarmShutdown(ID_NUM, 0);
-    }
     Position = Serial.parseInt(); 
     Serial.println(Position);    
     delay(200);

@@ -1,14 +1,18 @@
 #include <PA12.h>
 
-PA12 myServo(&Serial1,         2,  1);
+PA12 myServo(&Serial2, 8, 1); 
 //               (&Serial ,enable_pin,  Tx Level)
 
 int ID_Sel =0;
 
 void setup() {   
-  Serial.begin(9600);
+  Serial.begin(9600);  
   myServo.begin(32);  
+  myServo.movingSpeed(ID_NUM,750);
+
   while (! Serial);  
+
+  scan_Bus();
   Serial.print("Input ID : ");  
 }
 
@@ -19,11 +23,23 @@ void loop() {
   
   if(Serial.available()) {  
     ID_Sel = Serial.parseInt();
-    Serial.println(ID_Sel);
-    Serial.print("Input_ID [0~3] : ");
-    myServo.ServoID(0,ID_Sel);
-    myServo.ServoID(1,ID_Sel);
-    myServo.ServoID(2,ID_Sel);
-    myServo.ServoID(3,ID_Sel);
+    if(Serial.read() == ':')
+    {
+      myServo.ServoID(ID_Sel, Serial.parseInt());
+      scan_Bus();
+    }
+  }
+}
+
+void scan_Bus()
+{
+  Serial.println("--Servo ID's Present--")
+  for(int i = 0; i < 255; i++)
+  {
+    if(myServo.ServoID(i) != 0xff)
+    {
+      Serial.print("ID");
+      Serial.print(i);
+    }
   }
 }
