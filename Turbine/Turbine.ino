@@ -40,8 +40,8 @@ unsigned long Timer_E_Switch;
 unsigned long Timer_50;
 unsigned long Timer_250;
 
-int PCC_Relay_Set_Pin = 6;
-int PCC_Relay_Reset_Pin = 7;
+int PCC_Relay_Set_Pin = 14;
+int PCC_Relay_Reset_Pin = 15;
 
 bool PCC_Relay = false;
 
@@ -63,7 +63,6 @@ void setup()
   pinMode(PCC_Relay_Reset_Pin, OUTPUT);
   pinMode(PCC_Relay_Set_Pin, OUTPUT);
 
-  pinMode(14, OUTPUT);
   pinMode(Safety_SW, INPUT);
   E_Switch = digitalRead(Safety_SW);
   last_E_Switch = E_Switch;
@@ -121,7 +120,6 @@ void loop()
       AR_RX();
     }
     pc_coms();
-    digitalWrite(14, PCC_Relay);
     myServo.goalPosition(ID_NUM, theta);
   }
 
@@ -135,6 +133,10 @@ void pc_coms()
     switch(cmd){
       case 'a':
         alpha = Serial.parseInt();
+        break;
+      
+      case 'p':
+        PCC_Relay = !PCC_Relay;
         break;
 
       default:
