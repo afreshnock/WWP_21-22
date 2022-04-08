@@ -35,8 +35,8 @@ uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 const int Safety_SW = 17;
 
-unsigned E_Switch_Wait_Interval = 100;
-unsigned long Timer_E_Switch;
+unsigned PCC_Relay_Pulse_Interval = 100;
+unsigned long Timer_PCC_Relay;
 unsigned long Timer_50;
 unsigned long Timer_250;
 
@@ -44,14 +44,18 @@ int PCC_Relay_Set_Pin = 14;
 int PCC_Relay_Reset_Pin = 15;
 
 bool PCC_Relay = false;
-
+bool last_PCC_Relay = false;
 //---------------------------------------------------------------------------------------
 void setup()
 {
+  pinMode(6, OUTPUT); //debug pin
+  digitalWrite(6, HIGH);
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
   pinMode(0, INPUT);  //RX1
-
+  
+  
+  
   //UART2 (to linear actuators)
   pinMode(9, OUTPUT); //TX1
   pinMode(10, INPUT);  //RX1
@@ -103,7 +107,7 @@ void loop()
     //*********Code that runs all the time independent of the State**********
     RPM = outputRPM;
     read_Sensors();
-    check_E_Switch(E_Switch);
+    update_PCC_Relay();
     //***********************************************************************
   
   }
@@ -148,7 +152,7 @@ void pc_coms()
     Serial.print("RPM: ");
     Serial.println(RPM);
 
-    Serial.print("PCC Relay: ")
+    Serial.print("PCC Relay: ");
     Serial.println(PCC_Relay);
 
     Serial.print("Alpha: ");
@@ -198,23 +202,26 @@ void pc_coms()
 }
 
 //---------------------------------------------------------------------------------------
-void check_E_Switch(bool switch_State)
+void update_PCC_Relay()
 {
   switch(Switching_State)
   {
     case S_Wait:
-      if(last_E_Switch != E_Switch)
+      if(last_PCC_Relay != PCC_Relay)
       {
-        last_E_Switch = E_Switch;
-        Timer_E_Switch = millis();
+        Serial.println("toggled");
+        last_PCC_Relay = PCC_Relay;
+        Timer_PCC_Relay = millis();
 
-        if(E_Switch)
+        if(PCC_Relay)
         {
+          Serial.println("toggledH");
           digitalWrite(PCC_Relay_Set_Pin, HIGH);
           Switching_State = Toggled_H;
         }
         else
         {
+          Serial.println("toggledL");
           digitalWrite(PCC_Relay_Reset_Pin, HIGH);
           Switching_State = Toggled_L;
         }
@@ -222,16 +229,18 @@ void check_E_Switch(bool switch_State)
       break;
 
     case Toggled_H:
-      if(millis() - Timer_E_Switch >= E_Switch_Wait_Interval)
+      if(millis() - Timer_PCC_Relay >= PCC_Relay_Pulse_Interval)
       {
+        Serial.println("WaitH");
         digitalWrite(PCC_Relay_Set_Pin, LOW);
         Switching_State = S_Wait;
       }
       break;
 
     case Toggled_L:
-      if(millis() - Timer_E_Switch >= E_Switch_Wait_Interval)
+      if(millis() - Timer_PCC_Relay >= PCC_Relay_Pulse_Interval)
       {
+        Serial.println("WaitL");
         digitalWrite(PCC_Relay_Reset_Pin, LOW);
         Switching_State = S_Wait;
       }

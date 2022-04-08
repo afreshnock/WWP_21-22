@@ -141,10 +141,12 @@ void manage_state(){
     
     case Normal:
       //Optimize for power
-      
+      if(RPM >= 1300 && PCC_Relay)
+      {
+        PCC_Relay = !PCC_Relay;
+      }
       if(T_Power >= min_pitch_pwr)
       {
-        if(PCC_Relay) PCC_Relay = false;
         set_theta(maxpwr_t); // to be optimized
         set_load(med_r);
       }
