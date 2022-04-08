@@ -55,7 +55,7 @@ float incLoad = 1;
 bool incrementingLoad;
 bool staticLoad = false;
 
-unsigned timeTheta = 4000;
+unsigned timeTheta = 8000;
 uint16_t minTheta = 0;
 uint16_t maxTheta = 90;
 uint16_t incTheta = 30;

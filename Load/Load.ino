@@ -140,6 +140,18 @@ void manage_state(){
       break;
     
     case Normal:
+      //Emergency switch condition
+      if(!E_Switch)
+      {
+        //Move to Safety1
+        State = Safety1;
+      }
+      //Discontinuity Condition
+      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
+      {
+        //Move to Safety2
+        State = Safety2;
+      }
       //Optimize for power
       if(RPM >= 1300 && PCC_Relay)
       {
@@ -159,6 +171,10 @@ void manage_state(){
         State = Regulate;
       }
 
+
+      break;
+
+    case Regulate:
       //Emergency switch condition
       if(!E_Switch)
       {
@@ -171,9 +187,6 @@ void manage_state(){
         //Move to Safety2
         State = Safety2;
       }
-      break;
-
-    case Regulate:
       //Regulate RPM at 11m/s val (PID? keep at val)
       
       if(RPM > 3000)
@@ -193,18 +206,7 @@ void manage_state(){
       {
         State = Normal;
       }
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
-        State = Safety1;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
-      }
+
       break;
       
     case Safety1:
