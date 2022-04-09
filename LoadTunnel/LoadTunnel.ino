@@ -49,14 +49,14 @@ bool incrementingAlpha;
 bool staticAlpha = false;
 
 unsigned timeLoad = 4000;
-float minLoad = 1;
-float maxLoad = 4;
+float minLoad = 64;
+float maxLoad = 64;
 float incLoad = 1;
 bool incrementingLoad;
 bool staticLoad = false;
 
 unsigned timeTheta = 8000;
-uint16_t minTheta = 0;
+uint16_t minTheta = 38;
 uint16_t maxTheta = 90;
 uint16_t incTheta = 30;
 bool incrementingTheta;
@@ -139,11 +139,22 @@ void setup()
   
   try_SD_begin(BUILTIN_SDCARD);
 
-  PCC_Relay = false;
   Auto_PCC = false;
   set_theta(minTheta);
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
+
+  PCC_Relay = true;
+  digitalWrite(24, PCC_Relay);
+  delay(500);
+
+  PCC_Relay = true;
+  uart_TX();
+  delay(5000);
+  PCC_Relay = false;
+  uart_TX();
+  delay(500);
+  digitalWrite(24, PCC_Relay);
 }
 
 //---------------------------------------------------------------------------------------
@@ -172,18 +183,6 @@ void loop()
     analogWrite(6, tunnel_setting);
     if(PCCOMS) pc_coms();
     //Serial.println(micros() - ts);
-    
-    if(Auto_PCC)
-    {
-      if(L_Voltage < 3300)
-      {
-        PCC_Relay = true;
-      }
-      else
-      {
-        PCC_Relay = false;
-      }
-    }
     digitalWrite(24, PCC_Relay);
   }
   

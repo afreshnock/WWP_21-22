@@ -40,16 +40,16 @@ unsigned long Timer_PCC_Relay;
 unsigned long Timer_50;
 unsigned long Timer_250;
 
-int PCC_Relay_Set_Pin = 14;
-int PCC_Relay_Reset_Pin = 15;
+int PCC_Relay_Set_Pin = 15;
+int PCC_Relay_Reset_Pin = 14;
 
 bool PCC_Relay = false;
 bool last_PCC_Relay = false;
 //---------------------------------------------------------------------------------------
 void setup()
 {
-  pinMode(6, OUTPUT); //debug pin
-  digitalWrite(6, HIGH);
+  pinMode(13, OUTPUT); //debug pin
+  digitalWrite(13, HIGH);
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
   pinMode(0, INPUT);  //RX1
@@ -209,19 +209,19 @@ void update_PCC_Relay()
     case S_Wait:
       if(last_PCC_Relay != PCC_Relay)
       {
-        Serial.println("toggled");
+        //Serial.println("toggled");
         last_PCC_Relay = PCC_Relay;
         Timer_PCC_Relay = millis();
 
         if(PCC_Relay)
         {
-          Serial.println("toggledH");
+          //Serial.println("toggledH");
           digitalWrite(PCC_Relay_Set_Pin, HIGH);
           Switching_State = Toggled_H;
         }
         else
         {
-          Serial.println("toggledL");
+          //Serial.println("toggledL");
           digitalWrite(PCC_Relay_Reset_Pin, HIGH);
           Switching_State = Toggled_L;
         }
@@ -231,7 +231,7 @@ void update_PCC_Relay()
     case Toggled_H:
       if(millis() - Timer_PCC_Relay >= PCC_Relay_Pulse_Interval)
       {
-        Serial.println("WaitH");
+        //Serial.println("WaitH");
         digitalWrite(PCC_Relay_Set_Pin, LOW);
         Switching_State = S_Wait;
       }
@@ -240,7 +240,7 @@ void update_PCC_Relay()
     case Toggled_L:
       if(millis() - Timer_PCC_Relay >= PCC_Relay_Pulse_Interval)
       {
-        Serial.println("WaitL");
+        //Serial.println("WaitL");
         digitalWrite(PCC_Relay_Reset_Pin, LOW);
         Switching_State = S_Wait;
       }
