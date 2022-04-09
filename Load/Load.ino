@@ -8,8 +8,9 @@
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
-enum PitchStates {P_Wait, CheckRPM, P_Change};
-PitchStates PState = P_Wait;
+enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl};
+OptStates OState = TWait;
+OptStates NextOState = RCtrl;
 States State = Wait;
 
 //Preset Go-to resistances
@@ -29,7 +30,7 @@ uint8_t norm_a = 0;
 uint8_t pwrreg_a = 30;
 
 uint16_t min_pitch_pwr = 800;
-uint16_t min_turb_v = 3333;
+uint16_t L_Voltage_Target = 3333;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -71,15 +72,16 @@ unsigned long Timer_Slow;
 unsigned long Timer_Log;
 unsigned long Timer_Wait;
 unsigned long Comms_Timeout;
-unsigned long Timer_Pitch;
-unsigned long Timer_Resistance;
+unsigned long Timer_Transient;
 
-unsigned Fast_Interval = 50;
+
+unsigned Fast_Interval = 1;
 unsigned Slow_Interval = 250;
 unsigned Log_Interval = 25;
 unsigned Wait_Interval;
 unsigned Pitch_Transient = 2500;
 unsigned Resistance_Transient = 250;
+unsigned Transient_Interval;
 
 bool Turbine_Comms;
 bool PCC_Relay;
@@ -121,12 +123,11 @@ void setup()
 void loop()
 {
   uart_RX();
+
   if (millis() - Timer_Fast >= Fast_Interval)
   {
     Timer_Fast = millis();
-
-    analogWrite(6, tunnel_setting);
-
+    
     fan_ctrl();
     track_peaks();
     read_sensors();
@@ -135,7 +136,8 @@ void loop()
   if (millis() - Timer_Slow >= Slow_Interval)
   {
     Timer_Slow = millis();
-
+    
+    analogWrite(6, tunnel_setting);
     uart_TX();
     pc_coms();
   }
@@ -167,7 +169,6 @@ void loop()
 //---------------------------------------------------------------------------------------
 void manage_state()
 {
-  static float rt;
   switch (State)
   {
     case Wait:
@@ -194,39 +195,11 @@ void manage_state()
         //Move to Safety2
         State = Safety2_Entry;
       }
-      /*
-        if (T_Power >= min_pitch_pwr)
-        {
-        set_theta(maxpwr_t); // to be optimized
-        }
-      */
-      if(millis() - Timer_Resistance >= Resistance_Transient)
-      {
-        Timer_Resistance = millis();
-        if(abs(L_Voltage - min_turb_v >= 10))
-        {
-          Resistance_Transient = 64000/(abs(L_Voltage - min_turb_v)*resistance)+50;
-        }
-        if(L_Voltage < 0.95*min_turb_v || L_Voltage > 1.05*min_turb_v)
-        {
-          rt = (L_Voltage > min_turb_v) ? -0.25 : 0.25;
-          set_load(resistance + rt); // to be optimized
-          Pitch_Enable = false;
-        }
-        if((L_Voltage >= 0.95*min_turb_v && L_Voltage <= 1.05*min_turb_v) || resistance == 1)
-        {
-          Pitch_Enable = true;
-        }
-      }
-      if (Pitch_Enable && T_Power > 600)
-      {
-        optimize_pitch();
-      }
-
       if (RPM > 3000)
       {
         State = Regulate;
       }
+      optimize_3_3();
 
 
       break;
@@ -276,14 +249,15 @@ void manage_state()
       {
         //Move to Safety1
         set_theta(revive_t);
+        set_load(cutin_r);
         //Optimize for power
         if (RPM >= 800 && PCC_Relay)
         {
           PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
           Wait_Interval = 1000;
-          State = Wait;     
-          set_load(cutin_r);
+          State = Wait;
+          set_load(20);
         }
       }
       break;
@@ -302,13 +276,14 @@ void manage_state()
       if (Turbine_Comms)
       {
         set_theta(revive_t);
+        set_load(cutin_r);
         if (RPM >= 800 && PCC_Relay)
         {
           PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
-          set_load(cutin_r);
+          set_load(20);
         }
       }
       break;
@@ -318,6 +293,88 @@ void manage_state()
       break;
   }
   digitalWrite(24, PCC_Relay);
+}
+
+//---------------------------------------------------------------------------------------
+void optimize_3_3()
+{
+  static int sign = -1;
+  static int r_priority = 3;
+  static int r_iter = 0;
+  static float rt;
+  switch(OState)
+  {
+    case TWait:
+      if (millis() - Timer_Transient >= Transient_Interval)
+      {
+        Timer_Transient = millis();
+        OState = NextOState;
+      }
+      break;
+
+    case RCtrl:
+      if(abs(L_Voltage - L_Voltage_Target >= 10))
+      {
+        Resistance_Transient = 64000/(abs(L_Voltage - L_Voltage_Target)*resistance)+FILTER_LENGTH;
+      }
+      if(L_Voltage < 0.95*L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
+      {
+        rt = (L_Voltage > L_Voltage_Target) ? -0.25 : 0.25;
+        set_load(resistance + rt); // to be optimized
+        Pitch_Enable = false;
+        Transient_Interval = Resistance_Transient;
+        r_iter++;
+        NextOState = RCtrl;
+      }
+      if((L_Voltage >= 0.95*L_Voltage_Target && L_Voltage <= 1.05*L_Voltage_Target) || resistance == 1 || r_iter >= r_priority)
+      {
+        Pitch_Enable = true;
+      }
+      if(Pitch_Enable && T_Power > 600)
+      {
+        NextOState = PInit;
+        //Transient_Interval = 10;
+      }
+      OState = TWait;
+      break;
+
+    case PInit:
+      RPM_last = RPM;
+      OState = PCtrl;
+      break;
+
+    case PCtrl:
+      set_theta(theta + sign * 2.5);
+      Transient_Interval = Pitch_Transient;
+      OState = TWait;
+      NextOState = PCheck;
+      break;
+
+    case PCheck:
+      if (RPM_last > RPM)
+      {
+        sign = 1;
+      }
+      else if (RPM_last == RPM)
+      {
+        sign = 0;
+      }
+      else
+      {
+        sign = -1;
+      }
+      OState = TWait;
+      NextOState = PCtrl;
+      Transient_Interval = 1;
+      break;
+
+    default:
+      OState = TWait;
+      NextOState = PCtrl;
+      Transient_Interval = 1;
+      break;
+
+  }
 }
 
 //---------------------------------------------------------------------------------------
@@ -532,15 +589,23 @@ void init_timers()
   Timer_Fast = millis();
   Timer_Slow = millis();
   Timer_Log = millis();
-  Timer_Pitch = millis();
+  Timer_Transient = millis();
+}
+
+//---------------------------------------------------------------------------------------
+void read_sensors_filtered()
+{
+  //L_Voltage = ina260.readBusVoltage();
+  L_Voltage_raw = ina260.readBusVoltage();
+  L_Power_raw = ina260.readPower();
+  L_Current = ina260.readCurrent();
+  filter_vars();
 }
 
 //---------------------------------------------------------------------------------------
 void read_sensors()
 {
-  //L_Voltage = ina260.readBusVoltage();
-  L_Voltage_raw = ina260.readBusVoltage();
-  filter_vars();
+  L_Voltage = ina260.readBusVoltage();
   L_Power = ina260.readPower();
   L_Current = ina260.readCurrent();
 }
@@ -661,53 +726,21 @@ void uart_RX()
 //---------------------------------------------------------------------------------------
 void filter_vars()
 {
+  static int index = 0;
   static long L_V_raw_Samples[FILTER_LENGTH];
   static long L_V_sum = 0;
-  static int L_V_index = 0;
+  static long L_P_raw_Samples[FILTER_LENGTH];
+  static long L_P_sum = 0;
 
-  L_V_sum = L_V_sum + L_Voltage_raw - L_V_raw_Samples[L_V_index];
-  L_V_raw_Samples[L_V_index] = L_Voltage_raw;
-  L_V_index = ( L_V_index + 1 ) % FILTER_LENGTH;
+
+  L_V_sum = L_V_sum + L_Voltage_raw - L_V_raw_Samples[index];
+  L_V_raw_Samples[index] = L_Voltage_raw;
+
+  L_P_sum = L_P_sum + L_Power_raw - L_P_raw_Samples[index];
+  L_P_raw_Samples[index] = L_Power_raw;
+
+  index = ( index + 1 ) % FILTER_LENGTH;
+
   L_Voltage = L_V_sum / FILTER_LENGTH;
-}
-
-void optimize_pitch()
-{
-  static int sign = 1;
-  switch (PState)
-  {
-    case P_Wait:
-      if (millis() - Timer_Pitch >= Pitch_Transient)
-      {
-        PState = CheckRPM;
-      }
-      break;
-
-    case CheckRPM:
-      if (RPM_last > RPM)
-      {
-        sign = 1;
-      }
-      else if (RPM_last == RPM)
-      {
-        sign = 0;
-      }
-      else
-      {
-        sign = -1;
-      }
-      PState = P_Change;
-      RPM_last = RPM;
-      break;
-
-    case P_Change:
-      set_theta(theta + sign * 2.5);
-      Timer_Pitch = millis();
-      PState = P_Wait;
-      break;
-
-    default:
-      PState = P_Wait;
-      break;
-  }
+  L_Power = L_P_sum / FILTER_LENGTH;
 }
