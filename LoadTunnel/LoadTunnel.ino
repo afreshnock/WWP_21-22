@@ -153,25 +153,19 @@ void loop()
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
-    //*********Code that runs all the time independent of the State**********
+
     fan_ctrl();
     track_peaks();
     read_sensors();
-    //***********************************************************************
-  
-    //*********Code that runs dependent of the current machine State*********
-    //if(TestState == Man) manage_state();
-    //***********************************************************************
+
   }
   if(millis() - Timer_250 >= State_Interval)
   {
     Timer_250 = millis();
-    //unsigned long ts = micros();
     uart_TX();
     manage_sim_state();
     analogWrite(6, tunnel_setting);
     if(PCCOMS) pc_coms();
-    //Serial.println(micros() - ts);
     
     if(Auto_PCC)
     {
@@ -186,7 +180,7 @@ void loop()
     }
     digitalWrite(24, PCC_Relay);
   }
-  
+  /*
   if(millis() - Timer_Log >= logInterval){
     Timer_Log = millis();
     try_Log_Data((String)
@@ -206,6 +200,7 @@ void loop()
       + "," + State
     );
   }
+  */
 }
 
 //---------------------------------------------------------------------------------------
@@ -400,100 +395,6 @@ void manage_sim_state(){
         }
       break;
 
-  }
-}
-
-//---------------------------------------------------------------------------------------
-void manage_state(){
-  switch (State)
-  {
-    
-    case Wait:
-      //If load recieves data from turbine, enter normal operation
-      if (Turbine_Comms)
-      {
-        //Do something
-        State = Normal;
-      }
-      break;
-    
-    case Normal:
-      //Optimize for power
-      
-
-      //If overspeed
-      if(RPM + k1*theta + k2*alpha + k3*load_Val > thresh)
-      {
-        State = Regulate;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
-      }
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
-        State = Safety2;
-      }
-      break;
-
-    case Regulate:
-      //Regulate RPM at 11m/s val (PID? keep at val)
-
-
-      //back to normal run state
-      if(RPM + k1*theta + k2*alpha + k3*load_Val < thresh)
-      {
-        State = Normal;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
-      }
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
-        State = Safety1;
-      }
-      break;
-      
-    case Safety1:
-      
-      set_theta(100);
-      PCC_Relay = true;
-
-      //Emergency switch condition
-      if(E_Switch)
-      {
-        set_theta(2000);
-        PCC_Relay = false;
-        State = Normal;
-      }
-      break;
-
-    case Safety2:
-      
-      set_theta(100);
-      PCC_Relay = true;
-
-      //Discontinuity Condition
-      if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        PCC_Relay = false;
-        set_theta(2000);
-        State = Normal;
-      }
-      break;
-
-    default:
-      State = Wait;
-      break;
   }
 }
 
