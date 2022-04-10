@@ -38,7 +38,7 @@ const int Safety_SW = 17;
 unsigned PCC_Relay_Pulse_Interval = 100;
 unsigned long Timer_PCC_Relay;
 unsigned long Timer_50;
-unsigned long Timer_250;
+unsigned long Timer_Slow;
 
 int PCC_Relay_Set_Pin = 15;
 int PCC_Relay_Reset_Pin = 14;
@@ -93,7 +93,7 @@ void setup()
 
   //set up timers
   Timer_50 = millis();
-  Timer_250 = millis();
+  Timer_Slow = millis();
 }
 
 //---------------------------------------------------------------------------------------
@@ -109,13 +109,6 @@ void loop()
     read_Sensors();
     update_PCC_Relay();
     //***********************************************************************
-  
-  }
-  
-  if(millis() - Timer_250 >= 250)
-  {
-    Timer_250 = millis();
-    
     uart_TX();
     if(old_alpha != alpha)
     {
@@ -123,8 +116,13 @@ void loop()
       AR_TX();
       AR_RX();
     }
-    pc_coms();
     myServo.goalPosition(ID_NUM, theta);
+  }
+  
+  if(millis() - Timer_Slow >= 250)
+  {
+    Timer_Slow = millis();
+    pc_coms();
   }
 
 }

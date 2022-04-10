@@ -8,7 +8,7 @@
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
-enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl};
+enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS};
 OptStates OState = TWait;
 OptStates NextOState = RCtrl;
 States State = Wait;
@@ -68,6 +68,7 @@ uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 
 unsigned long Timer_Fast;
+unsigned long Timer_Medium;
 unsigned long Timer_Slow;
 unsigned long Timer_Log;
 unsigned long Timer_Wait;
@@ -76,10 +77,11 @@ unsigned long Timer_Transient;
 
 
 unsigned Fast_Interval = 1;
+unsigned Medium_Interval = 50;
 unsigned Slow_Interval = 250;
 unsigned Log_Interval = 25;
 unsigned Wait_Interval;
-unsigned Pitch_Transient = 2500;
+unsigned Pitch_Transient = 1500;
 unsigned Resistance_Transient = 250;
 unsigned Transient_Interval;
 
@@ -115,7 +117,7 @@ void setup()
 
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
-
+  Wait_Interval = 10000;
 
 }
 
@@ -133,12 +135,17 @@ void loop()
     read_sensors();
     manage_state();
   }
+  if (millis() - Timer_Medium >= Medium_Interval)
+  {
+    Timer_Medium = millis();
+    
+    uart_TX();
+  }
   if (millis() - Timer_Slow >= Slow_Interval)
   {
     Timer_Slow = millis();
     
     analogWrite(6, tunnel_setting);
-    uart_TX();
     pc_coms();
   }
 
@@ -178,6 +185,10 @@ void manage_state()
         if (Turbine_Comms)
         {
           State = Normal;
+          if (SDConnected && !Logging)
+          {
+            toggle_Logging();
+          }
         }
       }
       break;
@@ -257,7 +268,7 @@ void manage_state()
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
-          set_load(20);
+          set_load(40);
         }
       }
       break;
@@ -283,7 +294,7 @@ void manage_state()
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
-          set_load(20);
+          set_load(40);
         }
       }
       break;
@@ -298,17 +309,20 @@ void manage_state()
 //---------------------------------------------------------------------------------------
 void optimize_3_3()
 {
-  static int sign = -1;
+  static float sign = -1;
+  static float pitch_coef = 5.0;
   static int r_priority = 3;
   static int r_iter = 0;
   static float rt;
+  static uint16_t SS_RPM;
   switch(OState)
   {
     case TWait:
+      //Wait state to allow other states to jump into for transiets
       if (millis() - Timer_Transient >= Transient_Interval)
       {
         Timer_Transient = millis();
-        OState = NextOState;
+        OState = NextOState; //can specify next state in previous state
       }
       break;
 
@@ -324,53 +338,73 @@ void optimize_3_3()
         Pitch_Enable = false;
         Transient_Interval = Resistance_Transient;
         r_iter++;
-        NextOState = RCtrl;
+        NextOState = RCtrl; //come back here after transiet
       }
-      if((L_Voltage >= 0.95*L_Voltage_Target && L_Voltage <= 1.05*L_Voltage_Target) || resistance == 1 || r_iter >= r_priority)
+      if((L_Voltage >= 0.95*L_Voltage_Target && L_Voltage <= 1.05*L_Voltage_Target) || resistance == 1)// || r_iter >= r_priority)
       {
         Pitch_Enable = true;
       }
-      if(Pitch_Enable && T_Power > 600)
+      if(Pitch_Enable && T_Power > 600) //pitch can be changed and we have enough power
       {
-        NextOState = PInit;
+        NextOState = PInit; //go to change pitch after transient
+        Transient_Interval = 500;
         //Transient_Interval = 10;
       }
-      OState = TWait;
+      OState = TWait; //always wait for transient
       break;
 
     case PInit:
       RPM_last = RPM;
       OState = PCtrl;
+      Serial.println("PInit");
       break;
 
     case PCtrl:
-      set_theta(theta + sign * 2.5);
+      Serial.println("PCtrl");
+      Serial.println(sign);
+      set_theta(theta + sign*pitch_coef);
       Transient_Interval = Pitch_Transient;
       OState = TWait;
       NextOState = PCheck;
       break;
 
     case PCheck:
+      Serial.println("PCheck");
       if (RPM_last > RPM)
       {
-        sign = 1;
-      }
-      else if (RPM_last == RPM)
-      {
-        sign = 0;
+        sign = -sign;
+        pitch_coef = pitch_coef / 2.0;
       }
       else
       {
-        sign = -1;
+        sign = sign;
       }
+      if(pitch_coef < .01)
+      {
+        pitch_coef = 0;
+        SS_RPM = RPM;
+        OState = TSS;
+      }
+      else
+      {
       OState = TWait;
-      NextOState = PCtrl;
+      }
+      NextOState = RCtrl;
       Transient_Interval = 1;
       break;
 
+    case TSS:
+      if(0.9*SS_RPM > RPM || 1.1*SS_RPM < RPM)
+      {
+        pitch_coef = 5;
+        OState = TWait;
+        Transient_Interval = 2000;
+      }
+      
+      break;
     default:
       OState = TWait;
-      NextOState = PCtrl;
+      NextOState = RCtrl;
       Transient_Interval = 1;
       break;
 
@@ -428,6 +462,9 @@ void pc_coms()
 
     Serial.print("PCC Relay: ");
     Serial.println(PCC_Relay);
+
+    Serial.print("Pitch Enable: ");
+    Serial.println(Pitch_Enable);
 
     Serial.print("RPM: ");
     Serial.println(RPM);
@@ -587,6 +624,7 @@ void init_coms()
 void init_timers()
 {
   Timer_Fast = millis();
+  Timer_Medium = millis();
   Timer_Slow = millis();
   Timer_Log = millis();
   Timer_Transient = millis();
