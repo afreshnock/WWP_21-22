@@ -13,7 +13,8 @@ Safety1
         * load waits to see enough power on turbine side (might already see it cause pcc is flipped)
         once enough power seen
             load flips own relay
-            load tells turbine to flip relay
+            load
+             tells turbine to flip relay
         turbine flips relay
 
 safety2
