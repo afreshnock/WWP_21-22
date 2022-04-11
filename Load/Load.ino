@@ -8,7 +8,7 @@
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
-enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS};
+enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS, PStatic};
 OptStates OState = TWait;
 OptStates NextOState = RCtrl;
 States State = Wait;
@@ -347,21 +347,30 @@ void optimize_3_3()
       if(Pitch_Enable && T_Power > 600) //pitch can be changed and we have enough power
       {
         NextOState = PInit; //go to change pitch after transient
+        
+
+        NextOState = PStatic;
+
+
         Transient_Interval = 500;
         //Transient_Interval = 10;
       }
       OState = TWait; //always wait for transient
       break;
 
+    case PStatic:
+      set_theta(18);
+      Transient_Interval = Pitch_Transient;
+      OState = TWait;
+      NextOState = RCtrl;
+      break;
+
     case PInit:
       RPM_last = RPM;
       OState = PCtrl;
-      Serial.println("PInit");
       break;
 
     case PCtrl:
-      Serial.println("PCtrl");
-      Serial.println(sign);
       set_theta(theta + sign*pitch_coef);
       Transient_Interval = Pitch_Transient;
       OState = TWait;
@@ -369,7 +378,6 @@ void optimize_3_3()
       break;
 
     case PCheck:
-      Serial.println("PCheck");
       if (RPM_last > RPM)
       {
         sign = -sign;
