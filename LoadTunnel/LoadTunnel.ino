@@ -35,9 +35,9 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 bool EntryScreen = true;
 
 unsigned timeWS= 15000;
-double minWindSpeed = 12.0;
-double maxWindSpeed = 16.0;
-double incWindSpeed = 0.5;
+double minWindSpeed = 10;
+double maxWindSpeed = 11;
+double incWindSpeed = 0.25;
 bool staticWS = false;
 bool incrementingWS;
 
@@ -46,19 +46,19 @@ int minAlpha = 0;
 int maxAlpha = 0;
 int incAlpha = 0;
 bool incrementingAlpha;
-bool staticAlpha = false;
+bool staticAlpha = true;
 
-unsigned timeLoad = 4000;
-float minLoad = 64;
-float maxLoad = 64;
-float incLoad = 1;
+unsigned timeLoad = 1000;
+float minLoad = 1;
+float maxLoad = 5.0;
+float incLoad = 0.25;
 bool incrementingLoad;
 bool staticLoad = false;
 
 unsigned timeTheta = 8000;
-uint16_t minTheta = 38;
-uint16_t maxTheta = 90;
-uint16_t incTheta = 30;
+uint16_t minTheta = 15;
+uint16_t maxTheta = 40;
+uint16_t incTheta = 5;
 bool incrementingTheta;
 bool staticTheta = false;
 
@@ -180,7 +180,7 @@ void loop()
     //Serial.println(micros() - ts);
     digitalWrite(24, PCC_Relay);
   }
-  /*
+  
   if(millis() - Timer_Log >= logInterval){
     Timer_Log = millis();
     try_Log_Data((String)
@@ -200,7 +200,7 @@ void loop()
       + "," + State
     );
   }
-  */
+
 }
 
 //---------------------------------------------------------------------------------------
@@ -259,9 +259,9 @@ void manage_sim_state(){
         staticTheta = (maxTheta - minTheta == 0 || incTheta == 0);
         staticWS = (maxWindSpeed - minWindSpeed == 0 || incWindSpeed ==0);
         
-        set_load(minLoad);
+        set_load(maxLoad);
         alpha = minAlpha;
-        set_theta(minTheta);
+        set_theta(maxTheta);
         set_windspeed(minWindSpeed);
 
         Serial.println("Automatic Testing Initializing");
@@ -305,14 +305,14 @@ void manage_sim_state(){
         if(!staticLoad)
         {
           timeT = timeLoad;
-          if(resistance + incLoad <= maxLoad)
+          if(resistance - incLoad >= minLoad)
           {
-            resistance += incLoad;
+            resistance -= incLoad;
             set_load(resistance);
           }
           else
           {
-            resistance = minLoad;
+            resistance = maxLoad;
             set_load(resistance);
             TestState = StepAlpha;
           }
@@ -344,19 +344,19 @@ void manage_sim_state(){
           TestState = StepTheta;
         }
       break;
-
+    
     case StepTheta:
         if(!staticTheta)
         {
           timeT += timeTheta;
-          if(theta + incTheta <= maxTheta)
+          if(theta - incTheta >= minTheta)
           {
-            set_theta(theta + incTheta);
+            set_theta(theta - incTheta);
             TestState = StepLoad;
           }
           else
           {
-            set_theta(minTheta);
+            set_theta(maxTheta);
             TestState = StepWS;
           }
         }

@@ -8,9 +8,9 @@ int ID_Sel =0;
 void setup() {   
   Serial.begin(9600);  
   myServo.begin(32);  
-  myServo.movingSpeed(ID_NUM,750);
+  myServo.movingSpeed(ID_Sel,750);
 
-  while (! Serial);  
+  while (!Serial);  
 
   scan_Bus();
   Serial.print("Input ID : ");  
@@ -33,7 +33,7 @@ void loop() {
 
 void scan_Bus()
 {
-  Serial.println("--Servo ID's Present--")
+  Serial.println("--Servo ID's Present--");
   for(int i = 0; i < 255; i++)
   {
     if(myServo.ServoID(i) != 0xff)

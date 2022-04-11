@@ -6,7 +6,7 @@
 
 #define ID_NUM 0
 
-PA12 myServo(&Serial2, 8, 1); 
+PA12 myServo(&Serial4, 8, 1); 
 //          (&Serial, enable_pin,  Tx Level)
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
@@ -300,7 +300,7 @@ void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
   //Six byte minimum needed in RX buffer
-  if (Serial1.available() >= 6)
+  if (Serial1.available() >= 7)
   {
     //Check for start byte
     if (Serial1.read() == 'S')
