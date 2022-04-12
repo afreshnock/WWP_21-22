@@ -9,29 +9,16 @@ Adafruit_INA260 ina260 = Adafruit_INA260();
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
 enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS, PStatic};
+enum RegStates {RWait, PCtrl, ACtrl};
 OptStates OState = TWait;
 OptStates NextOState = RCtrl;
+RegStates RegState = RWait;
+
 States State = Wait;
 
-//Preset Go-to resistances
 float cutin_r = 64;
-float med_r = 2.5;
-float maxpwr_r = 1.5;
-
-//Preset Go-to theta angles
 float cutin_t = 30.0;
-float revive_t = 20.0;
-float revive_r = 20;
-float maxpwr_t = 18.8821;
-float brake_t = 95;
-float reg_t = 38.0221;
-
-//Preset alpha angles
 uint8_t norm_a = 0;
-uint8_t pwrreg_a = 30;
-
-uint16_t min_pitch_pwr = 800;
-uint16_t L_Voltage_Target = 3500;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -177,6 +164,15 @@ void loop()
 //---------------------------------------------------------------------------------------
 void manage_state()
 {
+  //Preset Go-to resistances
+  static float med_r = 2.5;
+  static float revive_r = 20;
+  static float last_rpm = 0;
+  static float revive_t = 20.0;
+  static float brake_t = 95;
+
+  static uint8_t pwrreg_a = 30;
+
   switch (State)
   {
     case Wait:
@@ -202,7 +198,7 @@ void manage_state()
         State = Safety1;
       }
       //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.1)) && (RPM >= 400))
+      if ((L_Voltage < (T_Voltage * 0.2)) && (RPM >= 400))
       {
         //Move to Safety2
         State = Safety2_Entry;
@@ -214,6 +210,7 @@ void manage_state()
       optimize_3_3();
       revive_t = theta;
       revive_r = resistance;
+      last_rpm = RPM;
       
 
 
@@ -227,27 +224,19 @@ void manage_state()
         State = Safety1;
       }
       //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.5)) && (RPM >= 100))
+      if ((L_Voltage < (T_Voltage * 0.2)) && (RPM >= 100))
       {
         //Move to Safety2
         State = Safety2_Entry;
       }
       //Regulate RPM at 11m/s val (PID? keep at val)
 
-      if (RPM > 3000)
+      if(RPM > 1.05*last_rpm)
       {
-        set_theta( theta + 0.1); // to be optimized
+        regulate(1.1*last_rpm);
         set_load(med_r);
-        if (RPM > 4000)
-        {
-          alpha = pwrreg_a;
-        }
-        else
-        {
-          alpha = norm_a;
-        }
       }
-      else
+      if(RPM < last_rpm)
       {
         State = Normal;
       }
@@ -269,7 +258,7 @@ void manage_state()
         set_theta(revive_t);
         set_load(revive_r);
         //Optimize for power
-        if (T_Power >= 800 && PCC_Relay)
+        if (RPM >= 0.8*last_rpm >= 800 && PCC_Relay)
         {
           PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
@@ -294,7 +283,7 @@ void manage_state()
       {
         set_theta(revive_t);
         set_load(revive_r);
-        if (T_Power >= 800 && PCC_Relay)
+        if (RPM >= 0.8*last_rpm && PCC_Relay) //will cause issues if turbine is reconnected at a different RPM
         {
           PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
@@ -316,10 +305,10 @@ void optimize_3_3()
 {
   static float sign = -1;
   static float pitch_coef = 5.0;
-  static int r_priority = 3;
   static int r_iter = 0;
   static float rt;
   static uint16_t SS_RPM;
+  static uint16_t L_Voltage_Target = 3500;
   switch(OState)
   {
     case TWait:
@@ -332,13 +321,13 @@ void optimize_3_3()
       break;
 
     case RCtrl:
-      if(abs(L_Voltage - L_Voltage_Target >= 10))
+      if(abs(L_Voltage - L_Voltage_Target) >= 10)
       {
         Resistance_Transient = 64000/(abs(L_Voltage - L_Voltage_Target)*resistance)+FILTER_LENGTH;
       }
       if(L_Voltage < 0.95* L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
       {
-        rt = (L_Voltage > L_Voltage_Target) ? -0.25 : 0.25;
+        rt = 0.01*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
         set_load(resistance + rt); // to be optimized
         Pitch_Enable = false;
         Transient_Interval = Resistance_Transient;
@@ -348,22 +337,6 @@ void optimize_3_3()
       if(T_Voltage >= 3300)
       {
         set_theta(18);
-      }
-      if((L_Voltage >= 0.95*L_Voltage_Target && L_Voltage <= 1.05*L_Voltage_Target) || resistance == 1)// || r_iter >= r_priority)
-      {
-        Pitch_Enable = true;
-      }
-      
-      if(Pitch_Enable && T_Power > 600) //pitch can be changed and we have enough power
-      {
-        NextOState = PInit; //go to change pitch after transient
-        
-
-        NextOState = PStatic;
-
-
-        Transient_Interval = 500;
-        //Transient_Interval = 10;
       }
       OState = TWait; //always wait for transient
       break;
@@ -423,6 +396,54 @@ void optimize_3_3()
     default:
       OState = TWait;
       NextOState = RCtrl;
+      Transient_Interval = 1;
+      break;
+
+  }
+}
+
+
+//---------------------------------------------------------------------------------------
+void regulate(uint16_t target_rpm)
+{
+  static float dp;
+  static RegStates NextRState = PCtrl;
+  
+  switch(RegState)
+  {
+    case RWait:
+      //Wait state to allow other states to jump into for transiets
+      if (millis() - Timer_Transient >= Transient_Interval)
+      {
+        Timer_Transient = millis();
+        RegState = NextRState; //can specify next state in previous state
+      }
+      break;
+
+    case PCtrl:
+      if(RPM < 0.95* target_rpm || RPM > 1.05*target_rpm)
+      {
+        RegState = RWait;
+        NextOState = PCtrl;
+        dp = -.1(target_rpm - RPM);
+        set_theta(theta + dp);
+      }
+      if(RPM > 1.5* target_rpm)
+      {
+        RegState = RWait;
+        NextOState = ACtrl;
+      }
+      
+      
+      break;
+
+    case ACtrl:
+
+      break;
+
+    default:
+      OState = RWait;
+      NextOState = RCheck;
       Transient_Interval = 1;
       break;
 
@@ -671,7 +692,7 @@ void set_load(float r)
 {
   resistance = r;
   if (r > 63.75) resistance = 63.75;
-  if (r < 1) resistance = 1;
+  if (r < 2.5) resistance = 2.5;
   load_Val = (int)(resistance * 4);
   digitalWriteFast(32, bitRead(load_Val, 0));  //LSB
   digitalWriteFast(31, bitRead(load_Val, 1));
