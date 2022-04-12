@@ -19,8 +19,9 @@ float med_r = 2.5;
 float maxpwr_r = 1.5;
 
 //Preset Go-to theta angles
-float cutin_t = 38.0221;
+float cutin_t = 30.0;
 float revive_t = 20.0;
+float revive_r = 20;
 float maxpwr_t = 18.8821;
 float brake_t = 95;
 float reg_t = 38.0221;
@@ -30,7 +31,7 @@ uint8_t norm_a = 0;
 uint8_t pwrreg_a = 30;
 
 uint16_t min_pitch_pwr = 800;
-uint16_t L_Voltage_Target = 3333;
+uint16_t L_Voltage_Target = 3500;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -201,7 +202,7 @@ void manage_state()
         State = Safety1;
       }
       //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.5)) && (RPM >= 400))
+      if ((L_Voltage < (T_Voltage * 0.1)) && (RPM >= 400))
       {
         //Move to Safety2
         State = Safety2_Entry;
@@ -211,6 +212,9 @@ void manage_state()
         State = Regulate;
       }
       optimize_3_3();
+      revive_t = theta;
+      revive_r = resistance;
+      
 
 
       break;
@@ -232,7 +236,7 @@ void manage_state()
 
       if (RPM > 3000)
       {
-        set_theta( theta = - 0.1); // to be optimized
+        set_theta( theta + 0.1); // to be optimized
         set_load(med_r);
         if (RPM > 4000)
         {
@@ -248,6 +252,9 @@ void manage_state()
         State = Normal;
       }
 
+      revive_t = theta;
+      revive_r = resistance;
+
       break;
 
     case Safety1:
@@ -260,15 +267,14 @@ void manage_state()
       {
         //Move to Safety1
         set_theta(revive_t);
-        set_load(cutin_r);
+        set_load(revive_r);
         //Optimize for power
-        if (RPM >= 800 && PCC_Relay)
+        if (T_Power >= 800 && PCC_Relay)
         {
           PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
-          set_load(40);
         }
       }
       break;
@@ -287,14 +293,13 @@ void manage_state()
       if (Turbine_Comms)
       {
         set_theta(revive_t);
-        set_load(cutin_r);
-        if (RPM >= 800 && PCC_Relay)
+        set_load(revive_r);
+        if (T_Power >= 800 && PCC_Relay)
         {
           PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
-          set_load(40);
         }
       }
       break;
@@ -331,7 +336,7 @@ void optimize_3_3()
       {
         Resistance_Transient = 64000/(abs(L_Voltage - L_Voltage_Target)*resistance)+FILTER_LENGTH;
       }
-      if(L_Voltage < 0.95*L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
+      if(L_Voltage < 0.95* L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
       {
         rt = (L_Voltage > L_Voltage_Target) ? -0.25 : 0.25;
         set_load(resistance + rt); // to be optimized
@@ -340,10 +345,15 @@ void optimize_3_3()
         r_iter++;
         NextOState = RCtrl; //come back here after transiet
       }
+      if(T_Voltage >= 3300)
+      {
+        set_theta(18);
+      }
       if((L_Voltage >= 0.95*L_Voltage_Target && L_Voltage <= 1.05*L_Voltage_Target) || resistance == 1)// || r_iter >= r_priority)
       {
         Pitch_Enable = true;
       }
+      
       if(Pitch_Enable && T_Power > 600) //pitch can be changed and we have enough power
       {
         NextOState = PInit; //go to change pitch after transient

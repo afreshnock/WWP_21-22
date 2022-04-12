@@ -6,7 +6,7 @@
 
 #define ID_NUM 0
 
-PA12 myServo(&Serial4, 8, 1); 
+PA12 myServo(&Serial5, 8, 1); 
 //          (&Serial, enable_pin,  Tx Level)
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
@@ -57,8 +57,8 @@ void setup()
   
   
   //UART2 (to linear actuators)
-  pinMode(9, OUTPUT); //TX1
-  pinMode(10, INPUT);  //RX1
+  pinMode(20, OUTPUT); //TX1
+  pinMode(21, INPUT);  //RX1
 
   //I2C (to INA260)
   pinMode(18, OUTPUT); //SDA1
