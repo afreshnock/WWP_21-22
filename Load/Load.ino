@@ -19,6 +19,7 @@ States State = Wait;
 float cutin_r = 64;
 float cutin_t = 25.0;
 uint8_t norm_a = 0;
+float opt_t = 12; // lowest optimal angle degree
 uint16_t regulate_rpm = 2200;
 
 uint16_t k1 = 1;
@@ -171,6 +172,7 @@ void manage_state()
   static float med_r = 2.5;
   static float revive_r = 20;
   static float last_rpm = 0;
+
   static float revive_t = 20.0;
   static float brake_t = 95;
 
@@ -318,7 +320,7 @@ void optimize_3_3()
   static float sign = -1;
   static float pitch_coef = 5.0;
   static int r_iter = 0;
-  static float rt;
+  static float dr;
   static uint16_t SS_RPM;
   static uint16_t L_Voltage_Target = 3500;
   switch(OState)
@@ -339,8 +341,8 @@ void optimize_3_3()
       }
       if(L_Voltage < 0.95* L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
       {
-        rt = 0.01*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
-        set_load(resistance + rt); // to be optimized
+        dr = 0.01*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
+        set_load(resistance + dr); // to be optimized
         Pitch_Enable = false;
         Transient_Interval = Resistance_Transient;
         r_iter++;
@@ -348,13 +350,13 @@ void optimize_3_3()
       }
       if(T_Voltage >= 3300)
       {
-        set_theta(18);
+        set_theta(opt_t);
       }
       OState = TWait; //always wait for transient
       break;
 
     case PStatic:
-      set_theta(18);
+      set_theta(opt_t);
       Transient_Interval = Pitch_Transient;
       OState = TWait;
       NextOState = RCtrl;
@@ -435,7 +437,7 @@ void regulate(uint16_t target_rpm)
     case Preg:
       if(RPM < target_rpm || RPM > 1.05*target_rpm)
       {
-        dp = -0.003*(target_rpm - RPM);
+        dp = 0.003*(RPM - target_rpm);
         set_theta(theta + dp);
       }
       Transient_Interval = 100;
@@ -725,7 +727,7 @@ void set_theta(float t)
 {
   theta = t;
   if (t > 95.0) theta = 95.0;
-  if (t < 5) theta = 5;
+  if (t < opt_t) theta = opt_t;
   theta_pos = (int)(31.3479 * theta + 208.084);
 }
 
