@@ -1,3 +1,6 @@
+#if defined(__IMXRT1062__)
+extern "C" uint32_t set_arm_clock(uint32_t frequency);
+#endif
 #include "src/INA260/Adafruit_INA260.h"
 #include "src/PA12/PA12.h"
 //Local libraries need to either be directly in the project folder, or in the src folder. 
@@ -53,7 +56,11 @@ void setup()
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
   pinMode(0, INPUT);  //RX1
-  
+  #if defined(__IMXRT1062__)
+    set_arm_clock(24000000);
+    Serial.print("F_CPU_ACTUAL=");
+    Serial.println(F_CPU_ACTUAL);
+  #endif
   
   
   //UART2 (to linear actuators)

@@ -9,7 +9,7 @@ Adafruit_INA260 ina260 = Adafruit_INA260();
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
 enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS, PStatic};
-enum RegStates {RWait, PCtrl, ACtrl};
+enum RegStates {RWait, Preg, Areg};
 OptStates OState = TWait;
 OptStates NextOState = RCtrl;
 RegStates RegState = RWait;
@@ -17,8 +17,9 @@ RegStates RegState = RWait;
 States State = Wait;
 
 float cutin_r = 64;
-float cutin_t = 30.0;
+float cutin_t = 25.0;
 uint8_t norm_a = 0;
+uint16_t regulate_rpm = 2200;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -84,7 +85,7 @@ void setup()
 {
   init_pins();
   init_coms();
-  init_timers();
+
 
   set_load(cutin_r);
 
@@ -92,21 +93,23 @@ void setup()
   alpha = norm_a;
 
   PCC_Relay = true;
+  Turbine_PCC_Relay = PCC_Relay;
   digitalWrite(24, PCC_Relay);
   delay(500);
-
-  PCC_Relay = true;
+  
   uart_TX();
-  delay(7000);
+  delay(5000);
   PCC_Relay = false;
+  Turbine_PCC_Relay = PCC_Relay;
   uart_TX();
   delay(500);
   digitalWrite(24, PCC_Relay);
 
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
-  Wait_Interval = 10000;
-
+  Wait_Interval = 5000;
+  
+  init_timers();
 }
 
 //---------------------------------------------------------------------------------------
@@ -186,6 +189,11 @@ void manage_state()
           {
             toggle_Logging();
           }
+          if(PCC_Relay)
+          {
+            PCC_Relay = false;
+            Turbine_PCC_Relay = PCC_Relay;
+          }
         }
       }
       break;
@@ -203,14 +211,15 @@ void manage_state()
         //Move to Safety2
         State = Safety2_Entry;
       }
-      if (RPM > 3000)
+      last_rpm = RPM;
+      if (RPM > regulate_rpm)
       {
         State = Regulate;
       }
       optimize_3_3();
       revive_t = theta;
       revive_r = resistance;
-      last_rpm = RPM;
+      
       
 
 
@@ -233,10 +242,10 @@ void manage_state()
 
       if(RPM > 1.05*last_rpm)
       {
-        regulate(1.1*last_rpm);
+        regulate(1.1*regulate_rpm);
         set_load(med_r);
       }
-      if(RPM < last_rpm)
+      if(RPM < 0.95*last_rpm)
       {
         State = Normal;
       }
@@ -250,6 +259,8 @@ void manage_state()
       //do safety1 stuff
       set_theta(brake_t);
       PCC_Relay = true;
+      Turbine_PCC_Relay = PCC_Relay;
+       
 
       //Emergency switch condition
       if (!E_Switch)
@@ -258,9 +269,9 @@ void manage_state()
         set_theta(revive_t);
         set_load(revive_r);
         //Optimize for power
-        if (RPM >= 0.8*last_rpm >= 800 && PCC_Relay)
+        if (RPM >= 0.8*last_rpm && PCC_Relay)
         {
-          PCC_Relay = !PCC_Relay;
+          Turbine_PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
@@ -272,6 +283,7 @@ void manage_state()
       //Do safety2 stuff?
       set_theta(brake_t);
       PCC_Relay = true;
+      Turbine_PCC_Relay = PCC_Relay;
       if (!Turbine_Comms)
       {
         State = Safety2_Wait;
@@ -285,7 +297,7 @@ void manage_state()
         set_load(revive_r);
         if (RPM >= 0.8*last_rpm && PCC_Relay) //will cause issues if turbine is reconnected at a different RPM
         {
-          PCC_Relay = !PCC_Relay;
+          Turbine_PCC_Relay = !PCC_Relay;
           Timer_Wait = millis();
           Wait_Interval = 1000;
           State = Wait;
@@ -407,7 +419,7 @@ void optimize_3_3()
 void regulate(uint16_t target_rpm)
 {
   static float dp;
-  static RegStates NextRState = PCtrl;
+  static RegStates NextRState = Preg;
   
   switch(RegState)
   {
@@ -420,30 +432,34 @@ void regulate(uint16_t target_rpm)
       }
       break;
 
-    case PCtrl:
-      if(RPM < 0.95* target_rpm || RPM > 1.05*target_rpm)
+    case Preg:
+      if(RPM < target_rpm || RPM > 1.05*target_rpm)
       {
-        RegState = RWait;
-        NextOState = PCtrl;
-        dp = -.1(target_rpm - RPM);
+        dp = -0.003*(target_rpm - RPM);
         set_theta(theta + dp);
       }
-      if(RPM > 1.5* target_rpm)
-      {
-        RegState = RWait;
-        NextOState = ACtrl;
-      }
-      
-      
+      Transient_Interval = 100;
+      NextRState = Areg;
+      RegState = RWait;
       break;
-
-    case ACtrl:
-
+      
+    case Areg:
+      if(RPM > 1.3* target_rpm)
+      {
+        alpha = 30;
+      }
+      else
+      {
+        alpha = 0;
+      }      
+      RegState = RWait;
+      NextRState = Preg;
+      Transient_Interval = 100;
       break;
 
     default:
-      OState = RWait;
-      NextOState = RCheck;
+      RegState = RWait;
+      NextRState = Preg;
       Transient_Interval = 1;
       break;
 
@@ -752,7 +768,7 @@ void uart_TX()
   Serial1.write(highByte(theta_pos));           //Theta
   Serial1.write(lowByte(theta_pos));           //Theta
   Serial1.write((byte)State);     //State
-  Serial1.write(PCC_Relay);
+  Serial1.write(Turbine_PCC_Relay);
   Serial1.write('E');             //End byte
 }
 
