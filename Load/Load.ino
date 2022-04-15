@@ -20,7 +20,7 @@ float cutin_r = 64;
 float cutin_t = 25.0;
 uint8_t norm_a = 0;
 float opt_t = 12; // lowest optimal angle degree
-uint16_t regulate_rpm = 2200;
+uint16_t regulate_rpm = 4400;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -92,20 +92,14 @@ void setup()
 
   set_theta(cutin_t);
   alpha = norm_a;
-
+  
   PCC_Relay = true;
-  Turbine_PCC_Relay = PCC_Relay;
   digitalWrite(24, PCC_Relay);
   delay(500);
-  
   uart_TX();
   delay(5000);
   PCC_Relay = false;
-  Turbine_PCC_Relay = PCC_Relay;
-  uart_TX();
-  delay(500);
-  digitalWrite(24, PCC_Relay);
-
+  
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
   Wait_Interval = 5000;
@@ -186,7 +180,7 @@ void manage_state()
       {
         if (Turbine_Comms)
         {
-          State = Normal;
+          State = Regulate;
           if (SDConnected && !Logging)
           {
             toggle_Logging();
@@ -194,7 +188,6 @@ void manage_state()
           if(PCC_Relay)
           {
             PCC_Relay = false;
-            Turbine_PCC_Relay = PCC_Relay;
           }
         }
       }
@@ -242,12 +235,12 @@ void manage_state()
       }
       //Regulate RPM at 11m/s val (PID? keep at val)
 
-      if(RPM > 1.05*last_rpm)
+      if(RPM > 1.05*regulate_rpm)
       {
         regulate(1.1*regulate_rpm);
         set_load(med_r);
       }
-      if(RPM < 0.95*last_rpm)
+      if(RPM < 0.95*regulate_rpm)
       {
         State = Normal;
       }
@@ -261,7 +254,6 @@ void manage_state()
       //do safety1 stuff
       set_theta(brake_t);
       PCC_Relay = true;
-      Turbine_PCC_Relay = PCC_Relay;
        
 
       //Emergency switch condition
@@ -270,14 +262,9 @@ void manage_state()
         //Move to Safety1
         set_theta(revive_t);
         set_load(revive_r);
-        //Optimize for power
-        if (RPM >= 0.8*last_rpm && PCC_Relay)
-        {
-          Turbine_PCC_Relay = !PCC_Relay;
-          Timer_Wait = millis();
-          Wait_Interval = 1000;
-          State = Wait;
-        }
+        Timer_Wait = millis();
+        Wait_Interval = 5000;
+        State = Wait;
       }
       break;
 
@@ -285,7 +272,6 @@ void manage_state()
       //Do safety2 stuff?
       set_theta(brake_t);
       PCC_Relay = true;
-      Turbine_PCC_Relay = PCC_Relay;
       if (!Turbine_Comms)
       {
         State = Safety2_Wait;
@@ -295,15 +281,11 @@ void manage_state()
     case Safety2_Wait:
       if (Turbine_Comms)
       {
-        set_theta(revive_t);
+        set_theta(cutin_t);
         set_load(revive_r);
-        if (RPM >= 0.8*last_rpm && PCC_Relay) //will cause issues if turbine is reconnected at a different RPM
-        {
-          Turbine_PCC_Relay = !PCC_Relay;
-          Timer_Wait = millis();
-          Wait_Interval = 1000;
-          State = Wait;
-        }
+        Timer_Wait = millis();
+        Wait_Interval = 5000;
+        State = Wait;
       }
       break;
 

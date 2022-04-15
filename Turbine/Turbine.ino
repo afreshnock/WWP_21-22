@@ -51,6 +51,7 @@ bool last_PCC_Relay = false;
 //---------------------------------------------------------------------------------------
 void setup()
 {
+  delay(1000);
   pinMode(13, OUTPUT); //debug pin
   digitalWrite(13, HIGH);
   //UART1 (to turbine)
