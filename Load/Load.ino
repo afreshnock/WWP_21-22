@@ -20,7 +20,7 @@ float cutin_r = 64;
 float cutin_t = 25.0;
 uint8_t norm_a = 0;
 float opt_t = 12; // lowest optimal angle degree
-uint16_t regulate_rpm = 4400;
+uint16_t regulate_rpm = 3000;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
