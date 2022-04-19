@@ -1,30 +1,26 @@
 #include "src/INA260/Adafruit_INA260.h"
-//Local libraries need to either be directly in the project folder, or in the src folder. 
+//Local libraries need to either be directly in the project folder, or in the src folder.
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "src/WP_SD.h"
 
+#define FILTER_LENGTH 10
+
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
-enum States {Wait, Normal, Regulate, Safety1, Safety2};
+enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
+enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS, PStatic};
+enum RegStates {RWait, Preg, Areg};
+OptStates OState = TWait;
+OptStates NextOState = RCtrl;
+RegStates RegState = RWait;
+
 States State = Wait;
 
-//Preset Go-to resistances
-float cutin_r = 5;
-float med_r = 2.5;
-float maxpwr_r = 1.5;
-
-//Preset Go-to theta angles
-float cutin_t = 38.0221;
-float maxpwr_t = 18.8821;
-float brake_t = 95;
-float reg_t = 38.0221;
-
-//Preset alpha angles
+float cutin_r = 64;
+float cutin_t = 25.0;
 uint8_t norm_a = 0;
-uint8_t pwrreg_a = 30;
-
-uint16_t min_pitch_pwr = 2000;
-uint16_t min_turb_v = 3300;
+float opt_t = 12; // lowest optimal angle degree
+uint16_t regulate_rpm = 3000;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -34,7 +30,10 @@ uint16_t thresh = 3800;
 
 
 //Load Variables
+uint16_t L_Voltage_raw;
 uint16_t L_Power;   //Load Power (mW)
+uint16_t L_Power_last = 14000;
+uint16_t L_Power_raw;   //Load Power (mW)
 uint16_t L_Voltage; //Load Voltage (mV)
 uint16_t L_Current; //Load Current (mA)
 
@@ -42,11 +41,12 @@ uint16_t L_Current; //Load Current (mA)
 uint16_t T_Power;   //Turbine Power (mW)
 uint16_t T_Voltage; //Turbine Power (mW)
 uint16_t RPM;       //Turbine RPM   (r/min)
+uint16_t RPM_last;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
 float resistance;
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 //       theta_pos = (int)(31.3479*theta + 208.084)
-uint16_t theta_pos; 
+uint16_t theta_pos;
 //    theta = (0.0319*theta_pos - 6.6379)   -- might need offest
 float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
@@ -58,177 +58,233 @@ uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 
 unsigned long Timer_Fast;
+unsigned long Timer_Medium;
 unsigned long Timer_Slow;
 unsigned long Timer_Log;
+unsigned long Timer_Wait;
 unsigned long Comms_Timeout;
+unsigned long Timer_Transient;
 
-unsigned Fast_Interval = 50;
+
+unsigned Fast_Interval = 1;
+unsigned Medium_Interval = 50;
 unsigned Slow_Interval = 250;
-unsigned Log_Interval = 500;
+unsigned Log_Interval = 25;
+unsigned Wait_Interval;
+unsigned Pitch_Transient = 1500;
+unsigned Resistance_Transient = 250;
+unsigned Transient_Interval;
 
 bool Turbine_Comms;
 bool PCC_Relay;
+bool Turbine_PCC_Relay;
+bool Pitch_Enable;
+bool Startup = true;
 
 //---------------------------------------------------------------------------------------
 void setup()
 {
   init_pins();
   init_coms();
-  init_timers();
+
 
   set_load(cutin_r);
-  PCC_Relay = false;
+
   set_theta(cutin_t);
   alpha = norm_a;
+  
+  PCC_Relay = true;
+  digitalWrite(24, PCC_Relay);
+  delay(500);
+  uart_TX();
+  delay(5000);
+  PCC_Relay = false;
+  
+  analogWriteFrequency(6, 200000);
+  analogWriteResolution(8);
+  Wait_Interval = 5000;
+  
+  init_timers();
 }
 
 //---------------------------------------------------------------------------------------
 void loop()
 {
   uart_RX();
-  if(millis() - Timer_Fast >= Fast_Interval)
+
+  if (millis() - Timer_Fast >= Fast_Interval)
   {
     Timer_Fast = millis();
-
+    
     fan_ctrl();
     track_peaks();
     read_sensors();
     manage_state();
   }
-  if(millis() - Timer_Slow >= Slow_Interval)
+  if (millis() - Timer_Medium >= Medium_Interval)
+  {
+    Timer_Medium = millis();
+    
+    uart_TX();
+  }
+  if (millis() - Timer_Slow >= Slow_Interval)
   {
     Timer_Slow = millis();
-
-    uart_TX();
+    
+    analogWrite(6, tunnel_setting);
     pc_coms();
   }
-  
-  if(millis() - Timer_Log >= Log_Interval)
+
+  if (millis() - Timer_Log >= Log_Interval)
   {
     Timer_Log = millis();
 
     try_Log_Data((String)
-              RPM
-      + "," + windspeed
-      + "," + E_Switch 
-      + "," + alpha 
-      + "," + theta
-      + "," + theta_pos
-      + "," + resistance 
-      + "," + load_Val 
-      + "," + L_Voltage 
-      + "," + L_Current 
-      + "," + L_Power
-      + "," + T_Voltage
-      + "," + T_Power
-      + "," + State
-    );
+                 RPM
+                 + "," + windspeed
+                 + "," + E_Switch
+                 + "," + alpha
+                 + "," + theta
+                 + "," + theta_pos
+                 + "," + resistance
+                 + "," + load_Val
+                 + "," + L_Voltage
+                 + "," + L_Current
+                 + "," + L_Power
+                 + "," + T_Voltage
+                 + "," + T_Power
+                 + "," + State
+                 + "," + Turbine_Comms
+                );
   }
 }
 
 //---------------------------------------------------------------------------------------
-void manage_state(){
+void manage_state()
+{
+  //Preset Go-to resistances
+  static float med_r = 2.5;
+  static float revive_r = 20;
+  static float last_rpm = 0;
+
+  static float revive_t = 20.0;
+  static float brake_t = 95;
+
+  static uint8_t pwrreg_a = 30;
+
   switch (State)
   {
     case Wait:
       //If load recieves data from turbine, enter normal operation
-
-      if(Turbine_Comms)
+      if (millis() - Timer_Wait >= Wait_Interval)
       {
-        State = Normal;
+        if (Turbine_Comms)
+        {
+          State = Regulate;
+          if (SDConnected && !Logging)
+          {
+            toggle_Logging();
+          }
+          if(PCC_Relay)
+          {
+            PCC_Relay = false;
+          }
+        }
       }
       break;
-    
+
     case Normal:
-      //Optimize for power
-      
-      if(T_Power >= min_pitch_pwr)
+      //Emergency switch condition
+      if (E_Switch)
       {
-        if(PCC_Relay) PCC_Relay = false;
-        set_theta(maxpwr_t); // to be optimized
-        set_load(med_r);
+        //Move to Safety1
+        State = Safety1;
       }
-      if(T_Voltage >= min_turb_v)
+      //Discontinuity Condition
+      if ((L_Voltage < (T_Voltage * 0.2)) && (RPM >= 400))
       {
-        set_load(maxpwr_r); // to be optimized
+        //Move to Safety2
+        State = Safety2_Entry;
       }
-      if(RPM > 3000)
+      last_rpm = RPM;
+      if (RPM > regulate_rpm)
       {
         State = Regulate;
       }
+      optimize_3_3();
+      revive_t = theta;
+      revive_r = resistance;
+      
+      
 
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
-        State = Safety1;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
-      }
+
       break;
 
     case Regulate:
-      //Regulate RPM at 11m/s val (PID? keep at val)
-      
-      if(RPM > 3000)
-      {
-        set_theta( theta=- 0.1); // to be optimized
-        set_load(med_r);
-        if(RPM > 4000)
-        {
-          alpha = pwrreg_a;
-        }
-        else
-        {
-          alpha = norm_a;
-        }
-      }
-      else
-      {
-        State = Normal;
-      }
       //Emergency switch condition
-      if(!E_Switch)
+      if (E_Switch)
       {
         //Move to Safety1
         State = Safety1;
       }
       //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
+      if ((L_Voltage < (T_Voltage * 0.2)) && (RPM >= 100))
       {
         //Move to Safety2
-        State = Safety2;
+        State = Safety2_Entry;
       }
+      //Regulate RPM at 11m/s val (PID? keep at val)
+
+      if(RPM > 1.05*regulate_rpm)
+      {
+        regulate(1.1*regulate_rpm);
+        set_load(med_r);
+      }
+      if(RPM < 0.95*regulate_rpm)
+      {
+        State = Normal;
+      }
+
+      revive_t = theta;
+      revive_r = resistance;
+
       break;
-      
+
     case Safety1:
       //do safety1 stuff
       set_theta(brake_t);
       PCC_Relay = true;
+       
 
       //Emergency switch condition
-      if(E_Switch)
+      if (!E_Switch)
       {
         //Move to Safety1
-        set_theta(cutin_t);
+        set_theta(revive_t);
+        set_load(revive_r);
+        Timer_Wait = millis();
+        Wait_Interval = 5000;
         State = Wait;
       }
       break;
 
-    case Safety2:
+    case Safety2_Entry:
       //Do safety2 stuff?
       set_theta(brake_t);
       PCC_Relay = true;
-
-      //Discontinuity Condition
-      if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
+      if (!Turbine_Comms)
       {
-        //Move to Safety2
+        State = Safety2_Wait;
+      }
+      break;
+
+    case Safety2_Wait:
+      if (Turbine_Comms)
+      {
         set_theta(cutin_t);
+        set_load(revive_r);
+        Timer_Wait = millis();
+        Wait_Interval = 5000;
         State = Wait;
       }
       break;
@@ -237,138 +293,324 @@ void manage_state(){
       State = Wait;
       break;
   }
+  digitalWrite(24, PCC_Relay);
+}
+
+//---------------------------------------------------------------------------------------
+void optimize_3_3()
+{
+  static float sign = -1;
+  static float pitch_coef = 5.0;
+  static int r_iter = 0;
+  static float dr;
+  static uint16_t SS_RPM;
+  static uint16_t L_Voltage_Target = 3500;
+  switch(OState)
+  {
+    case TWait:
+      //Wait state to allow other states to jump into for transiets
+      if (millis() - Timer_Transient >= Transient_Interval)
+      {
+        Timer_Transient = millis();
+        OState = NextOState; //can specify next state in previous state
+      }
+      break;
+
+    case RCtrl:
+      if(abs(L_Voltage - L_Voltage_Target) >= 10)
+      {
+        Resistance_Transient = 64000/(abs(L_Voltage - L_Voltage_Target)*resistance)+FILTER_LENGTH;
+      }
+      if(L_Voltage < 0.95* L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
+      {
+        dr = 0.01*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
+        set_load(resistance + dr); // to be optimized
+        Pitch_Enable = false;
+        Transient_Interval = Resistance_Transient;
+        r_iter++;
+        NextOState = RCtrl; //come back here after transiet
+      }
+      if(T_Voltage >= 3300)
+      {
+        set_theta(opt_t);
+      }
+      OState = TWait; //always wait for transient
+      break;
+
+    case PStatic:
+      set_theta(opt_t);
+      Transient_Interval = Pitch_Transient;
+      OState = TWait;
+      NextOState = RCtrl;
+      break;
+
+    case PInit:
+      RPM_last = RPM;
+      OState = PCtrl;
+      break;
+
+    case PCtrl:
+      set_theta(theta + sign*pitch_coef);
+      Transient_Interval = Pitch_Transient;
+      OState = TWait;
+      NextOState = PCheck;
+      break;
+
+    case PCheck:
+      if (RPM_last > RPM)
+      {
+        sign = -sign;
+        pitch_coef = pitch_coef / 2.0;
+      }
+      else
+      {
+        sign = sign;
+      }
+      if(pitch_coef < .01)
+      {
+        pitch_coef = 0;
+        SS_RPM = RPM;
+        OState = TSS;
+      }
+      else
+      {
+      OState = TWait;
+      }
+      NextOState = RCtrl;
+      Transient_Interval = 1;
+      break;
+
+    case TSS:
+      if(0.9*SS_RPM > RPM || 1.1*SS_RPM < RPM)
+      {
+        pitch_coef = 5;
+        OState = TWait;
+        Transient_Interval = 2000;
+      }
+      
+      break;
+    default:
+      OState = TWait;
+      NextOState = RCtrl;
+      Transient_Interval = 1;
+      break;
+
+  }
+}
+
+
+//---------------------------------------------------------------------------------------
+void regulate(uint16_t target_rpm)
+{
+  static float dp;
+  static RegStates NextRState = Preg;
+  
+  switch(RegState)
+  {
+    case RWait:
+      //Wait state to allow other states to jump into for transiets
+      if (millis() - Timer_Transient >= Transient_Interval)
+      {
+        Timer_Transient = millis();
+        RegState = NextRState; //can specify next state in previous state
+      }
+      break;
+
+    case Preg:
+      if(RPM < target_rpm || RPM > 1.05*target_rpm)
+      {
+        dp = 0.003*(RPM - target_rpm);
+        set_theta(theta + dp);
+      }
+      Transient_Interval = 100;
+      NextRState = Areg;
+      RegState = RWait;
+      break;
+      
+    case Areg:
+      if(RPM > 1.3* target_rpm)
+      {
+        alpha = 30;
+      }
+      else
+      {
+        alpha = 0;
+      }      
+      RegState = RWait;
+      NextRState = Preg;
+      Transient_Interval = 100;
+      break;
+
+    default:
+      RegState = RWait;
+      NextRState = Preg;
+      Transient_Interval = 1;
+      break;
+
+  }
 }
 
 //---------------------------------------------------------------------------------------
 void pc_coms()
 {
-  if(Serial.available() > 0)
+  if (Serial.available() > 0)
   {
     uint8_t cmd = Serial.read();
 
-    switch(cmd)
+    switch (cmd)
     {
       case 's':
-        if(SDConnected)
+        if (SDConnected)
         {
           toggle_Logging();
         }
-      break;
+        break;
 
       case 'r':
         resistance = Serial.parseFloat();
         set_load(resistance);
-      break;
+        break;
 
       case 'p':
         PCC_Relay = !PCC_Relay;
         digitalWrite(24, PCC_Relay);
-      break;
+        break;
 
       case 't':
         set_theta(Serial.parseFloat());
-      break;
+        break;
 
       case 'a':
         alpha = Serial.parseInt();
-      break;
-      
+        break;
+
       case 'w':
         set_windspeed(Serial.parseFloat());
-       
+
       default:
         Serial.println("Command not recognized");
-      break;
+        break;
     }
   }
 
-  if(Serial) // check performance cost on checking if serial is active
+  //---------------------------------------------------------------------------------------
+  if (Serial) // check performance cost on checking if serial is active
+  {
+    Serial.print("Turbine Connected: ");
+    Serial.println(Turbine_Comms);
+
+    Serial.print("PCC Relay: ");
+    Serial.println(PCC_Relay);
+
+    Serial.print("Pitch Enable: ");
+    Serial.println(Pitch_Enable);
+
+    Serial.print("RPM: ");
+    Serial.println(RPM);
+
+    Serial.print("Load Voltage: ");
+    Serial.print(L_Voltage);
+    Serial.println(" mV");
+
+    Serial.print("Load Voltage (unf): ");
+    Serial.print(L_Voltage_raw);
+    Serial.println(" mV");
+
+    Serial.print("Load Current: ");
+    Serial.print(L_Current);
+    Serial.println(" mA");
+
+    Serial.print("Load Power: ");
+    Serial.print(L_Power);
+    Serial.println(" mW");
+
+    Serial.print("Calculated Power: ");
+    Serial.print((float) L_Voltage * L_Current / 1000000);
+    Serial.println(" W");
+
+    Serial.print("Tubine Voltage: ");
+    Serial.print(T_Voltage);
+    Serial.println(" mV");
+
+    Serial.print("Turbine Power: ");
+    Serial.print(T_Power);
+    Serial.println(" mW");
+
+    Serial.print("State: ");
+    switch (State)
     {
-        Serial.print("RPM: ");
-        Serial.println(RPM);
+      case Wait:
+        Serial.println("Wait");
+        break;
 
-        Serial.print("Load Voltage: ");
-        Serial.print(L_Voltage);
-        Serial.println(" mV");
+      case Normal:
+        Serial.println("Normal");
+        break;
 
-        Serial.print("Load Current: ");
-        Serial.print(L_Current);
-        Serial.println(" mA");
-      
-        Serial.print("Load Power: ");
-        Serial.print(L_Power);
-        Serial.println(" mW");
+      case Regulate:
+        Serial.println("Regulate");
+        break;
 
-        Serial.print("Tubine Voltage: ");
-        Serial.print(T_Voltage);
-        Serial.println(" mV");
-      
-        Serial.print("Turbine Power: ");
-        Serial.print(T_Power);
-        Serial.println(" mW");
+      case Safety1:
+        Serial.println("Safety1");
+        break;
 
-        Serial.print("State: ");
-        switch(State)
-        {
-          case Wait:
-            Serial.println("Wait");
-          break;
-          
-          case Normal:
-            Serial.println("Normal");
-          break;
-          
-          case Regulate:
-            Serial.println("Regulate");
-          break;
-          
-          case Safety1:
-            Serial.println("Safety1");
-          break;
-          
-          case Safety2:
-            Serial.println("Safety2");
-          break;
-          
-          default:
-            Serial.println("Error");
-          break;
-        }
-        
-        Serial.print("Emergency Switch: ");
-        Serial.println(E_Switch);
-        
-        Serial.print("(w) Tunnel Set: ");
-        Serial.println(tunnel_setting);
-        
-        Serial.print("(a) Alpha: ");
-        Serial.println(alpha);
+      case Safety2_Entry:
+        Serial.println("Safety2 Entry");
+        break;
 
-        Serial.print("(t) Theta (0 - 95): ");
-        Serial.println(0.0319*theta_pos - 6.6379);
+      case Safety2_Wait:
+        Serial.println("Safety2 Wait");
+        break;
 
-        Serial.print("(r) Load: ");
-        Serial.print((float)load_Val/255*63.75);
-        Serial.println(" Ohms");
-        
-        Serial.print("(s) Logging: ");
-        if(Logging){
-          Serial.println("True");
-        }
-        else{
-          Serial.println("False");
-        }
-        
-        Serial.println();
+      default:
+        Serial.println("Error");
+        break;
     }
+
+    Serial.print("Emergency Switch: ");
+    Serial.println(E_Switch);
+
+    Serial.print("(w) Windspeed (0.0-17.0): ");
+    Serial.println(windspeed);
+
+    Serial.print("(a) Alpha: ");
+    Serial.println(alpha);
+
+    Serial.print("(t) Theta (0 - 95): ");
+    Serial.println(0.0319 * theta_pos - 6.6379);
+
+    Serial.print("(r) Load ( 0- 64 ): ");
+    Serial.print((float)load_Val / 255 * 63.75);
+    Serial.println(" Ohms");
+
+    Serial.println("(1)-k1 / (2)-k2 / (3)-k3 / (h)-thressh: ");
+    Serial.println((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
+
+    //Serial.println("RPM + k1*theta + k2*alpha + k3*load_Val > thresh");
+    Serial.print("Overspeed Condition: ");
+    Serial.print(RPM + k1 * theta + k2 * alpha + k3 * load_Val);
+    Serial.print(" > ");
+    Serial.println(thresh);
+
+    Serial.print("(s) Logging: ");
+    if (Logging) {
+      Serial.println("True");
+    }
+    else {
+      Serial.println("False");
+    }
+
+    Serial.println();
+  }
 }
 
 //---------------------------------------------------------------------------------------
 void set_windspeed(double ws)
 {
   windspeed = ws;
-  double temp = (0.303 + 18.7 * windspeed + -0.67 * pow(windspeed,2) + 0.0317 * pow(windspeed,3));
-  if(temp > 255){
+  double temp = (0.303 + 18.7 * windspeed + -0.67 * pow(windspeed, 2) + 0.0317 * pow(windspeed, 3));
+  if (temp > 255) {
     temp = 255;
   }
   tunnel_setting = (uint8_t)temp;
@@ -421,8 +663,20 @@ void init_coms()
 void init_timers()
 {
   Timer_Fast = millis();
+  Timer_Medium = millis();
   Timer_Slow = millis();
   Timer_Log = millis();
+  Timer_Transient = millis();
+}
+
+//---------------------------------------------------------------------------------------
+void read_sensors_filtered()
+{
+  //L_Voltage = ina260.readBusVoltage();
+  L_Voltage_raw = ina260.readBusVoltage();
+  L_Power_raw = ina260.readPower();
+  L_Current = ina260.readCurrent();
+  filter_vars();
 }
 
 //---------------------------------------------------------------------------------------
@@ -437,9 +691,9 @@ void read_sensors()
 void set_load(float r)
 {
   resistance = r;
-  if(r > 63.75) resistance = 63.75;
-  if(r < 1) resistance = 1;
-  load_Val = (int)(resistance*4);
+  if (r > 63.75) resistance = 63.75;
+  if (r < 2.5) resistance = 2.5;
+  load_Val = (int)(resistance * 4);
   digitalWriteFast(32, bitRead(load_Val, 0));  //LSB
   digitalWriteFast(31, bitRead(load_Val, 1));
   digitalWriteFast(30, bitRead(load_Val, 2));
@@ -454,9 +708,9 @@ void set_load(float r)
 void set_theta(float t)
 {
   theta = t;
-  if(t > 95.0) theta = 95.0;
-  if(t < 0) theta = 0;
-  theta_pos = (int)(31.3479*theta + 208.084);
+  if (t > 95.0) theta = 95.0;
+  if (t < opt_t) theta = opt_t;
+  theta_pos = (int)(31.3479 * theta + 208.084);
 }
 
 //---------------------------------------------------------------------------------------
@@ -498,7 +752,7 @@ void uart_TX()
   Serial1.write(highByte(theta_pos));           //Theta
   Serial1.write(lowByte(theta_pos));           //Theta
   Serial1.write((byte)State);     //State
-  Serial1.write(PCC_Relay);
+  Serial1.write(Turbine_PCC_Relay);
   Serial1.write('E');             //End byte
 }
 
@@ -506,7 +760,7 @@ void uart_TX()
 void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
-  // ** | Start | RPM_H | RPM_L | T_Power_H | T_Power_L | T_Voltage_H | T_Voltage_L | E_Switch | End | ** // 
+  // ** | Start | RPM_H | RPM_L | T_Power_H | T_Power_L | T_Voltage_H | T_Voltage_L | E_Switch | End | ** //
   //Six byte minimum needed in RX buffer
   if (Serial1.available() >= 9)
   {
@@ -523,7 +777,7 @@ void uart_RX()
       uint16_t temp3_h = Serial1.read();
       uint16_t temp3_l = Serial1.read();
       uint16_t temp4 = Serial1.read();
-      
+
       //Check for end byte
       if (Serial1.read() == 'E')
       {
@@ -536,7 +790,7 @@ void uart_RX()
     }
   }
   //If no data is recieved in the time that 2 packets are expected to be recieved, the turbine is assumed disconnected/off.
-  if(millis() - Comms_Timeout >= 2*Slow_Interval)
+  if (millis() - Comms_Timeout >= 2 * Slow_Interval)
   {
     Comms_Timeout = millis();
     Turbine_Comms = false;
@@ -544,4 +798,26 @@ void uart_RX()
     T_Power = 0;
     T_Voltage = 0;
   }
-} //hello 
+} //hello
+
+//---------------------------------------------------------------------------------------
+void filter_vars()
+{
+  static int index = 0;
+  static long L_V_raw_Samples[FILTER_LENGTH];
+  static long L_V_sum = 0;
+  static long L_P_raw_Samples[FILTER_LENGTH];
+  static long L_P_sum = 0;
+
+
+  L_V_sum = L_V_sum + L_Voltage_raw - L_V_raw_Samples[index];
+  L_V_raw_Samples[index] = L_Voltage_raw;
+
+  L_P_sum = L_P_sum + L_Power_raw - L_P_raw_Samples[index];
+  L_P_raw_Samples[index] = L_Power_raw;
+
+  index = ( index + 1 ) % FILTER_LENGTH;
+
+  L_Voltage = L_V_sum / FILTER_LENGTH;
+  L_Power = L_P_sum / FILTER_LENGTH;
+}

@@ -1,0 +1,35 @@
+Safety1
+    switch read as low on turbine board
+        sent to load
+        load flips own Relay
+        tells turbine to flip relay and Pitch
+        turbine flips relay
+        turbine pitches
+        brake.
+
+    switch read as high on turbine board
+        sent to load
+        load tells turbine to pitch to cutin
+        * load waits to see enough power on turbine side (might already see it cause pcc is flipped)
+        once enough power seen
+            load flips own relay
+            load
+             tells turbine to flip relay
+        turbine flips relay
+
+safety2
+    disconnect sensed on load side
+        ** (hope and pray) comms are still live **
+        load flips own relay
+        load tells turbine to flip relay and pitch
+    
+    reconnect sensed
+        load tells turbine to pitch back
+        * load waits to see enough power on turbine side (might already see it cause pcc is flipped)
+        once enough power seen
+            load flips own relay
+            load tells turbine to flip relay
+        turbine flips relay
+
+* false power readings due to pcc relay being flipped
+** operating on turbine produced power

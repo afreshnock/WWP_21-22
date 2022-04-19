@@ -23,7 +23,10 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t load_Val;   //Load resistance value (1-255)
 float resistance;
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
-uint16_t theta;      //Active Pitch angle            (degrees)
+//       theta_pos = (int)(31.3479*theta + 208.084)
+uint16_t theta_pos; 
+//    theta = (0.0319*theta_pos - 6.6379)   -- might need offest
+float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
 double windspeed;
 bool E_Switch;      //Bool indicating switch open   (normally closed)
@@ -32,9 +35,9 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 bool EntryScreen = true;
 
 unsigned timeWS= 15000;
-double minWindSpeed = 12.0;
-double maxWindSpeed = 16.0;
-double incWindSpeed = 0.5;
+double minWindSpeed = 10;
+double maxWindSpeed = 11;
+double incWindSpeed = 0.25;
 bool staticWS = false;
 bool incrementingWS;
 
@@ -43,19 +46,19 @@ int minAlpha = 0;
 int maxAlpha = 0;
 int incAlpha = 0;
 bool incrementingAlpha;
-bool staticAlpha = false;
+bool staticAlpha = true;
 
-unsigned timeLoad = 4000;
+unsigned timeLoad = 1000;
 float minLoad = 1;
-float maxLoad = 4;
-float incLoad = 1;
+float maxLoad = 5.0;
+float incLoad = 0.25;
 bool incrementingLoad;
 bool staticLoad = false;
 
-unsigned timeTheta = 4000;
-uint16_t minTheta = 200;
-uint16_t maxTheta = 3200;
-uint16_t incTheta = 600;
+unsigned timeTheta = 8000;
+uint16_t minTheta = 15;
+uint16_t maxTheta = 40;
+uint16_t incTheta = 5;
 bool incrementingTheta;
 bool staticTheta = false;
 
@@ -136,11 +139,22 @@ void setup()
   
   try_SD_begin(BUILTIN_SDCARD);
 
-  PCC_Relay = false;
   Auto_PCC = false;
-  theta = minTheta;
+  set_theta(minTheta);
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
+
+  PCC_Relay = true;
+  digitalWrite(24, PCC_Relay);
+  delay(500);
+
+  PCC_Relay = true;
+  uart_TX();
+  delay(5000);
+  PCC_Relay = false;
+  uart_TX();
+  delay(500);
+  digitalWrite(24, PCC_Relay);
 }
 
 //---------------------------------------------------------------------------------------
@@ -150,37 +164,20 @@ void loop()
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
-    //*********Code that runs all the time independent of the State**********
+
     fan_ctrl();
     track_peaks();
     read_sensors();
-    //***********************************************************************
-  
-    //*********Code that runs dependent of the current machine State*********
-    //if(TestState == Man) manage_state();
-    //***********************************************************************
+
   }
   if(millis() - Timer_250 >= State_Interval)
   {
     Timer_250 = millis();
-    //unsigned long ts = micros();
     uart_TX();
     manage_sim_state();
     analogWrite(6, tunnel_setting);
     if(PCCOMS) pc_coms();
     //Serial.println(micros() - ts);
-    
-    if(Auto_PCC)
-    {
-      if(L_Voltage < 3300)
-      {
-        PCC_Relay = true;
-      }
-      else
-      {
-        PCC_Relay = false;
-      }
-    }
     digitalWrite(24, PCC_Relay);
   }
   
@@ -188,10 +185,11 @@ void loop()
     Timer_Log = millis();
     try_Log_Data((String)
               RPM
-      + "," + windspeed 
+      + "," + windspeed
       + "," + E_Switch 
       + "," + alpha 
-      + "," + theta 
+      + "," + theta
+      + "," + theta_pos
       + "," + resistance 
       + "," + load_Val 
       + "," + L_Voltage 
@@ -200,14 +198,9 @@ void loop()
       + "," + T_Voltage
       + "," + T_Power
       + "," + State
-      + "," + k1
-      + "," + k2
-      + "," + k3
-      + "," + thresh
-      + "," + tunnel_setting
     );
   }
-  
+
 }
 
 //---------------------------------------------------------------------------------------
@@ -266,9 +259,9 @@ void manage_sim_state(){
         staticTheta = (maxTheta - minTheta == 0 || incTheta == 0);
         staticWS = (maxWindSpeed - minWindSpeed == 0 || incWindSpeed ==0);
         
-        set_load(minLoad);
+        set_load(maxLoad);
         alpha = minAlpha;
-        theta = minTheta;
+        set_theta(maxTheta);
         set_windspeed(minWindSpeed);
 
         Serial.println("Automatic Testing Initializing");
@@ -294,7 +287,7 @@ void manage_sim_state(){
         Serial.println(t);
         Timer_T = millis();
         TestState = StepLoad;
-        timeT = loadTime;
+        timeT = timeWS;
       }
       else
       {
@@ -312,14 +305,14 @@ void manage_sim_state(){
         if(!staticLoad)
         {
           timeT = timeLoad;
-          if(resistance + incLoad <= maxLoad)
+          if(resistance - incLoad >= minLoad)
           {
-            resistance += incLoad;
+            resistance -= incLoad;
             set_load(resistance);
           }
           else
           {
-            resistance = minLoad;
+            resistance = maxLoad;
             set_load(resistance);
             TestState = StepAlpha;
           }
@@ -351,19 +344,19 @@ void manage_sim_state(){
           TestState = StepTheta;
         }
       break;
-
+    
     case StepTheta:
         if(!staticTheta)
         {
           timeT += timeTheta;
-          if(theta + incTheta <= maxTheta)
+          if(theta - incTheta >= minTheta)
           {
-            theta += incTheta;
+            set_theta(theta - incTheta);
             TestState = StepLoad;
           }
           else
           {
-            theta = minTheta;
+            set_theta(maxTheta);
             TestState = StepWS;
           }
         }
@@ -402,100 +395,6 @@ void manage_sim_state(){
         }
       break;
 
-  }
-}
-
-//---------------------------------------------------------------------------------------
-void manage_state(){
-  switch (State)
-  {
-    
-    case Wait:
-      //If load recieves data from turbine, enter normal operation
-      if (Turbine_Comms)
-      {
-        //Do something
-        State = Normal;
-      }
-      break;
-    
-    case Normal:
-      //Optimize for power
-      
-
-      //If overspeed
-      if(RPM + k1*theta + k2*alpha + k3*load_Val > thresh)
-      {
-        State = Regulate;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
-      }
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
-        State = Safety2;
-      }
-      break;
-
-    case Regulate:
-      //Regulate RPM at 11m/s val (PID? keep at val)
-
-
-      //back to normal run state
-      if(RPM + k1*theta + k2*alpha + k3*load_Val < thresh)
-      {
-        State = Normal;
-      }
-      //Discontinuity Condition
-      if ((L_Voltage < (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        //Move to Safety2
-        State = Safety2;
-      }
-      //Emergency switch condition
-      if(!E_Switch)
-      {
-        //Move to Safety1
-        State = Safety1;
-      }
-      break;
-      
-    case Safety1:
-      
-      theta = 100;
-      PCC_Relay = true;
-
-      //Emergency switch condition
-      if(E_Switch)
-      {
-        theta = 2000;
-        PCC_Relay = false;
-        State = Normal;
-      }
-      break;
-
-    case Safety2:
-      
-      theta = 100;
-      PCC_Relay = true;
-
-      //Discontinuity Condition
-      if ((L_Voltage > (T_Voltage * 0.9)) && (RPM >= 100))
-      {
-        PCC_Relay = false;
-        theta = 2000;
-        State = Normal;
-      }
-      break;
-
-    default:
-      State = Wait;
-      break;
   }
 }
 
@@ -556,7 +455,7 @@ void pc_coms()
       break;
 
       case 't':
-        theta = Serial.parseInt();
+        set_theta(Serial.parseFloat());
       break;
 
       case 'a':
@@ -661,8 +560,8 @@ void pc_coms()
         Serial.print("(a) Alpha: ");
         Serial.println(alpha);
 
-        Serial.print("(t) Theta (100 - 3380): ");
-        Serial.println(theta);
+        Serial.print("(t) Theta (0 - 95): ");
+        Serial.println(0.0319*theta_pos - 6.6379);
 
         Serial.print("(r) Load ( 0- 64 ): ");
         Serial.print((float)load_Val/255*63.75);
@@ -725,6 +624,15 @@ void set_load(float r)
 }
 
 //---------------------------------------------------------------------------------------
+void set_theta(float t)
+{
+  theta = t;
+  if(t > 95.0) theta = 95.0;
+  if(t < 0) theta = 0;
+  theta_pos = (int)(31.3479*theta + 208.084);
+}
+
+//---------------------------------------------------------------------------------------
 uint8_t fan_ctrl()
 {
   //This function turns the fan on when load power exceeds 10W.
@@ -760,8 +668,8 @@ void uart_TX()
 {
   Serial1.write('S');             //Start byte
   Serial1.write(alpha);           //Alpha
-  Serial1.write(highByte(theta));           //Theta
-  Serial1.write(lowByte(theta));           //Theta
+  Serial1.write(highByte(theta_pos));           //Theta
+  Serial1.write(lowByte(theta_pos));           //Theta
   Serial1.write((byte)State);     //State
   Serial1.write(PCC_Relay);
   Serial1.write('E');             //End byte

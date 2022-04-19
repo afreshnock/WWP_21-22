@@ -52,7 +52,7 @@ void toggle_Logging()
     // otherwise, the current number is stored in memory
     else
     {
-      curNum = ++curNum; // just increment it
+      curNum++; // just increment it
     }
     // create the new filename
     sprintf(fileName, "log%i.csv", curNum);

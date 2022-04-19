@@ -1,3 +1,6 @@
+#if defined(__IMXRT1062__)
+extern "C" uint32_t set_arm_clock(uint32_t frequency);
+#endif
 #include "src/INA260/Adafruit_INA260.h"
 #include "src/PA12/PA12.h"
 //Local libraries need to either be directly in the project folder, or in the src folder. 
@@ -6,13 +9,15 @@
 
 #define ID_NUM 0
 
-PA12 myServo(&Serial2, 8, 1); 
+PA12 myServo(&Serial5, 8, 1); 
 //          (&Serial, enable_pin,  Tx Level)
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
+enum Switching_States {S_Wait, Toggled_H, Toggled_L};
+Switching_States Switching_State = S_Wait;
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2};
-States State = Normal;
+States State = Wait;
 
 //Load Variables
 uint16_t L_Power;   //Load Power (mW)
@@ -25,6 +30,7 @@ uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t old_alpha;
 uint16_t theta = 2000;      //Active Pitch angle   
+bool last_E_Switch;
 bool E_Switch;      //Bool indicating switch open
 
 //IDK Variables
@@ -32,30 +38,47 @@ uint16_t Peak_Power;  //(mW)
 uint16_t Peak_RPM;    //(r/min)
 const int Safety_SW = 17;
 
+unsigned PCC_Relay_Pulse_Interval = 100;
+unsigned long Timer_PCC_Relay;
 unsigned long Timer_50;
-unsigned long Timer_250;
+unsigned long Timer_Slow;
+
+int PCC_Relay_Set_Pin = 15;
+int PCC_Relay_Reset_Pin = 14;
 
 bool PCC_Relay = false;
-
+bool last_PCC_Relay = false;
 //---------------------------------------------------------------------------------------
 void setup()
 {
+  delay(1000);
+  pinMode(13, OUTPUT); //debug pin
+  digitalWrite(13, HIGH);
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
   pinMode(0, INPUT);  //RX1
-
+  #if defined(__IMXRT1062__)
+    set_arm_clock(24000000);
+    Serial.print("F_CPU_ACTUAL=");
+    Serial.println(F_CPU_ACTUAL);
+  #endif
+  
+  
   //UART2 (to linear actuators)
-  pinMode(9, OUTPUT); //TX1
-  pinMode(10, INPUT);  //RX1
+  pinMode(20, OUTPUT); //TX1
+  pinMode(21, INPUT);  //RX1
 
   //I2C (to INA260)
   pinMode(18, OUTPUT); //SDA1
   pinMode(19, OUTPUT); //SCL1
 
-  pinMode(14, OUTPUT);
+  pinMode(PCC_Relay_Reset_Pin, OUTPUT);
+  pinMode(PCC_Relay_Set_Pin, OUTPUT);
+
   pinMode(Safety_SW, INPUT);
   E_Switch = digitalRead(Safety_SW);
-  
+  last_E_Switch = E_Switch;
+
   //start comms with active rectifier
   Wire.begin();
   Wire.setClock(400000);
@@ -78,7 +101,7 @@ void setup()
 
   //set up timers
   Timer_50 = millis();
-  Timer_250 = millis();
+  Timer_Slow = millis();
 }
 
 //---------------------------------------------------------------------------------------
@@ -89,18 +112,11 @@ void loop()
   if(millis() - Timer_50 >= 50)
   {
     Timer_50 = millis();
-
     //*********Code that runs all the time independent of the State**********
     RPM = outputRPM;
     read_Sensors();
+    update_PCC_Relay();
     //***********************************************************************
-  
-  }
-  
-  if(millis() - Timer_250 >= 250)
-  {
-    Timer_250 = millis();
-    
     uart_TX();
     if(old_alpha != alpha)
     {
@@ -108,9 +124,13 @@ void loop()
       AR_TX();
       AR_RX();
     }
-    pc_coms();
-    digitalWrite(14, PCC_Relay);
     myServo.goalPosition(ID_NUM, theta);
+  }
+  
+  if(millis() - Timer_Slow >= 250)
+  {
+    Timer_Slow = millis();
+    pc_coms();
   }
 
 }
@@ -124,6 +144,10 @@ void pc_coms()
       case 'a':
         alpha = Serial.parseInt();
         break;
+      
+      case 'p':
+        PCC_Relay = !PCC_Relay;
+        break;
 
       default:
       break;
@@ -133,6 +157,9 @@ void pc_coms()
   {
     Serial.print("RPM: ");
     Serial.println(RPM);
+
+    Serial.print("PCC Relay: ");
+    Serial.println(PCC_Relay);
 
     Serial.print("Alpha: ");
     Serial.println(alpha);
@@ -177,6 +204,53 @@ void pc_coms()
     }
 
     Serial.println();
+  }
+}
+
+//---------------------------------------------------------------------------------------
+void update_PCC_Relay()
+{
+  switch(Switching_State)
+  {
+    case S_Wait:
+      if(last_PCC_Relay != PCC_Relay)
+      {
+        //Serial.println("toggled");
+        last_PCC_Relay = PCC_Relay;
+        Timer_PCC_Relay = millis();
+
+        if(PCC_Relay)
+        {
+          //Serial.println("toggledH");
+          digitalWrite(PCC_Relay_Set_Pin, HIGH);
+          Switching_State = Toggled_H;
+        }
+        else
+        {
+          //Serial.println("toggledL");
+          digitalWrite(PCC_Relay_Reset_Pin, HIGH);
+          Switching_State = Toggled_L;
+        }
+      }
+      break;
+
+    case Toggled_H:
+      if(millis() - Timer_PCC_Relay >= PCC_Relay_Pulse_Interval)
+      {
+        //Serial.println("WaitH");
+        digitalWrite(PCC_Relay_Set_Pin, LOW);
+        Switching_State = S_Wait;
+      }
+      break;
+
+    case Toggled_L:
+      if(millis() - Timer_PCC_Relay >= PCC_Relay_Pulse_Interval)
+      {
+        //Serial.println("WaitL");
+        digitalWrite(PCC_Relay_Reset_Pin, LOW);
+        Switching_State = S_Wait;
+      }
+      break;
   }
 }
 
@@ -234,7 +308,7 @@ void uart_RX()
 {
   // ** | Start | RPM_H | RPM_L | Power_H | Power_L | End | ** //
   //Six byte minimum needed in RX buffer
-  if (Serial1.available() >= 6)
+  if (Serial1.available() >= 7)
   {
     //Check for start byte
     if (Serial1.read() == 'S')
@@ -255,7 +329,6 @@ void uart_RX()
         State = temp3;
         PCC_Relay = temp4;
       }
-      
     }
   }
 } //hello 
