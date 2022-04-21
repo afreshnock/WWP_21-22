@@ -35,9 +35,9 @@ bool E_Switch;      //Bool indicating switch open   (normally closed)
 bool EntryScreen = true;
 
 unsigned timeWS= 15000;
-double minWindSpeed = 10;
-double maxWindSpeed = 11;
-double incWindSpeed = 0.25;
+double minWindSpeed = 12;
+double maxWindSpeed = 13;
+double incWindSpeed = 0.2;
 bool staticWS = false;
 bool incrementingWS;
 
@@ -49,16 +49,16 @@ bool incrementingAlpha;
 bool staticAlpha = true;
 
 unsigned timeLoad = 1000;
-float minLoad = 1;
-float maxLoad = 5.0;
+float minLoad = 2.5;
+float maxLoad = 2.5;
 float incLoad = 0.25;
 bool incrementingLoad;
-bool staticLoad = false;
+bool staticLoad = true;
 
-unsigned timeTheta = 8000;
-uint16_t minTheta = 15;
+unsigned timeTheta = 4000;
+uint16_t minTheta = 0;
 uint16_t maxTheta = 40;
-uint16_t incTheta = 5;
+uint16_t incTheta = 1;
 bool incrementingTheta;
 bool staticTheta = false;
 
@@ -302,9 +302,9 @@ void manage_sim_state(){
       if(millis() - Timer_T >= timeT)
       {
         Timer_T = millis();
+        timeT = timeLoad;
         if(!staticLoad)
         {
-          timeT = timeLoad;
           if(resistance - incLoad >= minLoad)
           {
             resistance -= incLoad;
