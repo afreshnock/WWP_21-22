@@ -18,10 +18,10 @@ RegStates RegState = RWait;
 States State = Wait;
 
 float cutin_r = 64;
-float cutin_t = 25.0;
+float cutin_t = 20.0;
 uint8_t norm_a = 0;
-float opt_t = 12; // lowest optimal angle degree
-uint16_t regulate_rpm = 4400;
+float opt_t = 8.5; // lowest optimal angle degree
+uint16_t regulate_rpm = 3000;
 
 uint16_t k1 = 1;
 uint16_t k2 = 1;
@@ -115,7 +115,7 @@ void setup()
   
   analogWriteFrequency(6, 200000);
   analogWriteResolution(8);
-  Wait_Interval = 5000;
+  Wait_Interval = 15000;
   
   init_timers();
 }
@@ -191,7 +191,7 @@ void loop()
 void manage_state()
 {
   //Preset Go-to resistances
-  static float med_r = 2.5;
+  static float med_r = 4.5;
   static float revive_r = 20;
   static float last_rpm = 0;
 
@@ -358,7 +358,7 @@ void optimize_3_3()
         r_iter++;
         NextOState = RCtrl; //come back here after transiet
       }
-      if(T_Voltage >= 3300)
+      if(T_Voltage >= 3400)
       {
         set_theta(opt_t);
       }
@@ -706,6 +706,7 @@ void init_timers()
   Timer_Medium = millis();
   Timer_Slow = millis();
   Timer_Log = millis();
+  Timer_Wait = millis();
   Timer_Transient = millis();
   Timer_Est = millis();
 }
@@ -733,7 +734,7 @@ void set_load(float r)
 {
   resistance = r;
   if (r > 63.75) resistance = 63.75;
-  if (r < 2.5) resistance = 2.5;
+  if (r < 2) resistance = 2;
   load_Val = (int)(resistance * 4);
   digitalWriteFast(32, bitRead(load_Val, 0));  //LSB
   digitalWriteFast(31, bitRead(load_Val, 1));
