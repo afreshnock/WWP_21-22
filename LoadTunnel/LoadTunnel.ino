@@ -2,6 +2,7 @@
 //Local libraries need to either be directly in the project folder, or in the src folder. 
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "src/WP_SD.h"
+#include "src/WS_EST_ptr/WS_EST_ptr.h"
 
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
@@ -29,6 +30,15 @@ uint16_t theta_pos;
 float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
 double windspeed;
+
+double ws_linear;
+long linearTime;
+double ws_poly2;
+long poly2Time;
+double ws_bestFit;
+long bestFitTime;
+unsigned long tempT;
+
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //AutoTest Variables -----------------------------------------------------------------
@@ -76,6 +86,8 @@ uint16_t k1, k2, k3, thresh;  //(coefficients for Normal/regulate state break)
 unsigned long Timer_50;
 unsigned long Timer_250;
 unsigned long Timer_Log;
+unsigned long Timer_Est;
+unsigned Est_Interval = 5000;
 unsigned long Comms_Timeout;
 bool Turbine_Comms;
 
@@ -84,6 +96,8 @@ unsigned long Timer_T;
 bool PCC_Relay;
 bool Auto_PCC;
 
+//WindspeedEstimation ws_estimator();
+WindspeedEstimation ws_estimator(&RPM, &theta, &L_Current, &L_Voltage, &L_Power);
 //---------------------------------------------------------------------------------------
 void setup()
 {
@@ -129,12 +143,12 @@ void setup()
 
   //Set up coms with PC
   Serial.begin(9600);
-  
+
   //set up timers
   Timer_50 = millis();
   Timer_250 = millis();
   Timer_Log = millis();
-
+  Timer_Est = millis();
   Timer_T = millis();
   
   try_SD_begin(BUILTIN_SDCARD);
@@ -179,6 +193,22 @@ void loop()
     if(PCCOMS) pc_coms();
     //Serial.println(micros() - ts);
     digitalWrite(24, PCC_Relay);
+  }
+
+  if(millis() - Timer_Est >= Est_Interval)
+  {
+    Timer_Est = millis();
+    
+    tempT = millis();
+    ws_linear = ws_estimator.linear();
+    linearTime = millis() - tempT;
+    tempT = millis();
+    ws_poly2 = ws_estimator.secondOrder();
+    poly2Time = millis() - tempT;
+    tempT = millis();
+    ws_bestFit = ws_estimator.bestFit();
+    bestFitTime = millis()- tempT;
+    
   }
   
   if(millis() - Timer_Log >= logInterval){
@@ -556,6 +586,18 @@ void pc_coms()
         
         Serial.print("(w) Windspeed (0.0-17.0): ");
         Serial.println(windspeed);
+
+        Serial.print("Linear: ");
+        Serial.print(ws_linear);
+        Serial.println(linearTime);
+
+        Serial.print("Poly2: ");
+        Serial.print(ws_poly2);
+        Serial.println(poly2Time);
+
+        Serial.print("Best Fit: ");
+        Serial.print(ws_bestFit);
+        Serial.println(bestFitTime);
         
         Serial.print("(a) Alpha: ");
         Serial.println(alpha);

@@ -2,6 +2,7 @@
 //Local libraries need to either be directly in the project folder, or in the src folder.
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "src/WP_SD.h"
+#include "src/WS_EST_ptr/WS_EST_ptr.h"
 
 #define FILTER_LENGTH 10
 
@@ -51,6 +52,16 @@ uint16_t theta_pos;
 float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
 double windspeed;
+
+double ws_linear;
+long linearTime;
+double ws_poly2;
+long poly2Time;
+double ws_bestFit;
+long bestFitTime;
+unsigned long tempT;
+
+
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
 //IDK Variables
@@ -64,6 +75,7 @@ unsigned long Timer_Log;
 unsigned long Timer_Wait;
 unsigned long Comms_Timeout;
 unsigned long Timer_Transient;
+unsigned long Timer_Est;
 
 
 unsigned Fast_Interval = 1;
@@ -74,6 +86,7 @@ unsigned Wait_Interval;
 unsigned Pitch_Transient = 1500;
 unsigned Resistance_Transient = 250;
 unsigned Transient_Interval;
+unsigned Est_Interval = 5000;
 
 bool Turbine_Comms;
 bool PCC_Relay;
@@ -133,6 +146,21 @@ void loop()
     
     analogWrite(6, tunnel_setting);
     pc_coms();
+  }
+
+  if(millis() - Timer_Est >= Est_Interval)
+  {
+    Timer_Est = millis();
+
+    tempT = millis();
+    ws_linear = ws_estimator.linear();
+    linearTime = millis() - tempT;
+    tempT = millis();
+    ws_poly2 = ws_estimator.secondOrder();
+    poly2Time = millis() - tempT;
+    tempT = millis();
+    ws_bestFit = ws_estimator.bestFit();
+    bestFitTime = millis()- tempT;
   }
 
   if (millis() - Timer_Log >= Log_Interval)
@@ -574,6 +602,18 @@ void pc_coms()
     Serial.print("(w) Windspeed (0.0-17.0): ");
     Serial.println(windspeed);
 
+    Serial.print("Linear: ");
+    Serial.print(ws_linear);
+    Serial.println(linearTime);
+
+    Serial.print("Poly2: ");
+    Serial.print(ws_poly2);
+    Serial.println(poly2Time);
+
+    Serial.print("Best Fit: ");
+    Serial.print(ws_bestFit);
+    Serial.println(bestFitTime);
+
     Serial.print("(a) Alpha: ");
     Serial.println(alpha);
 
@@ -667,6 +707,7 @@ void init_timers()
   Timer_Slow = millis();
   Timer_Log = millis();
   Timer_Transient = millis();
+  Timer_Est = millis();
 }
 
 //---------------------------------------------------------------------------------------
