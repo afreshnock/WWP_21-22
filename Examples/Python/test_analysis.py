@@ -1,3 +1,4 @@
+import decimal
 import pandas
 import re
 import numpy as np
@@ -12,7 +13,7 @@ plt.style.use('default')
 import os
 print(os.getcwd())
 df_train = pandas.read_excel("Examples/Python/data_4_20_22/6-13.xlsx", sheet_name="raw")
-df_test = pandas.read_excel("Examples/Python/data_4_20_22/6-13.xlsx", sheet_name="no_transient")
+df_test = pandas.read_excel("Examples/Python/data_4_20_22/6-13.xlsx", sheet_name="raw")
 
 inputs = ['rpm', 'theta', 'l_current', 'l_voltage',]
 equation_map = {
@@ -102,7 +103,7 @@ equation = str(model.intercept_[0])
 
 i = 0
 while i < len(names):
-    equation += '\n + ' + str(model.coef_[0][i]) + '*' + names[i] 
+    equation += '\n + ' + str(decimal.Decimal.from_float(model.coef_[0][i])) + '*' + names[i] 
     i += 1
 
 #print('inputs: ' + str(feature_names))

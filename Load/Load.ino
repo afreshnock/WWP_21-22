@@ -86,7 +86,7 @@ unsigned Wait_Interval;
 unsigned Pitch_Transient = 1500;
 unsigned Resistance_Transient = 250;
 unsigned Transient_Interval;
-unsigned Est_Interval = 5000;
+unsigned Est_Interval = 2000;
 
 bool Turbine_Comms;
 bool PCC_Relay;
@@ -94,6 +94,7 @@ bool Turbine_PCC_Relay;
 bool Pitch_Enable;
 bool Startup = true;
 
+WindspeedEstimation ws_estimator(&RPM, &theta, &L_Current, &L_Voltage, &L_Power);
 //---------------------------------------------------------------------------------------
 void setup()
 {
@@ -152,15 +153,15 @@ void loop()
   {
     Timer_Est = millis();
 
-    tempT = millis();
+    tempT = micros();
     ws_linear = ws_estimator.linear();
-    linearTime = millis() - tempT;
-    tempT = millis();
+    linearTime = micros() - tempT;
+    tempT = micros();
     ws_poly2 = ws_estimator.secondOrder();
-    poly2Time = millis() - tempT;
-    tempT = millis();
+    poly2Time = micros() - tempT;
+    tempT = micros();
     ws_bestFit = ws_estimator.bestFit();
-    bestFitTime = millis()- tempT;
+    bestFitTime = micros()- tempT;
   }
 
   if (millis() - Timer_Log >= Log_Interval)
@@ -604,14 +605,17 @@ void pc_coms()
 
     Serial.print("Linear: ");
     Serial.print(ws_linear);
+    Serial.print(" - t :");
     Serial.println(linearTime);
 
     Serial.print("Poly2: ");
     Serial.print(ws_poly2);
+    Serial.print(" - t :");
     Serial.println(poly2Time);
 
     Serial.print("Best Fit: ");
     Serial.print(ws_bestFit);
+    Serial.print(" - t :");
     Serial.println(bestFitTime);
 
     Serial.print("(a) Alpha: ");

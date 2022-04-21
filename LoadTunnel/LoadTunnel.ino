@@ -589,14 +589,17 @@ void pc_coms()
 
         Serial.print("Linear: ");
         Serial.print(ws_linear);
+        Serial.print(" - t :");
         Serial.println(linearTime);
 
         Serial.print("Poly2: ");
         Serial.print(ws_poly2);
+        Serial.print(" - t :");
         Serial.println(poly2Time);
 
         Serial.print("Best Fit: ");
         Serial.print(ws_bestFit);
+        Serial.print(" - t :");
         Serial.println(bestFitTime);
         
         Serial.print("(a) Alpha: ");
