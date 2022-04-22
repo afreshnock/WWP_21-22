@@ -2,38 +2,26 @@
 //Local libraries need to either be directly in the project folder, or in the src folder.
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "src/WP_SD.h"
-#include "src/WS_EST/WS_EST.h"
 
 #define FILTER_LENGTH 10
 
 Adafruit_INA260 ina260 = Adafruit_INA260();
 
 enum States {Wait, Normal, Regulate, Safety1, Safety2_Entry, Safety2_Wait};
-enum OptStates {TWait, PInit, PCheck, RCtrl, PCtrl, TSS, PStatic};
-enum RegStates {RWait, Preg, Areg};
-OptStates OState = TWait;
-OptStates NextOState = RCtrl;
-RegStates RegState = RWait;
+enum OptStates {TWait, RCtrl};
+enum RegStates {RWait, Preg};
 
 States State = Wait;
 
 float cutin_r = 64;
 float cutin_t = 20.0;
-uint8_t norm_a = 0;
 float opt_t = 7; // lowest optimal angle degree
 uint16_t regulate_rpm = 3000;
-
-uint16_t k1 = 1;
-uint16_t k2 = 1;
-uint16_t k3 = 1;
-uint16_t thresh = 3800;
-
 
 
 //Load Variables
 uint16_t L_Voltage_raw;
 uint16_t L_Power;   //Load Power (mW)
-uint16_t L_Power_last = 14000;
 uint16_t L_Power_raw;   //Load Power (mW)
 uint16_t L_Voltage; //Load Voltage (mV)
 uint16_t L_Current; //Load Current (mA)
@@ -53,14 +41,6 @@ float theta;      //  Active Pitch angle            (degrees)
 uint8_t tunnel_setting;
 double windspeed;
 
-double ws_linear;
-long linearTime;
-double ws_poly2;
-long poly2Time;
-double ws_bestFit;
-long bestFitTime;
-unsigned long tempT;
-
 
 bool E_Switch;      //Bool indicating switch open   (normally closed)
 
@@ -75,7 +55,6 @@ unsigned long Timer_Log;
 unsigned long Timer_Wait;
 unsigned long Comms_Timeout;
 unsigned long Timer_Transient;
-unsigned long Timer_Est;
 
 
 unsigned Fast_Interval = 1;
@@ -86,15 +65,10 @@ unsigned Wait_Interval;
 unsigned Pitch_Transient = 1500;
 unsigned Resistance_Transient = 250;
 unsigned Transient_Interval;
-unsigned Est_Interval = 2000;
 
 bool Turbine_Comms;
 bool PCC_Relay;
 bool Turbine_PCC_Relay;
-bool Pitch_Enable;
-bool Startup = true;
-
-WindspeedEstimation ws_estimator(&RPM, &theta, &L_Current, &L_Voltage, &L_Power);
 
 //---------------------------------------------------------------------------------------
 void setup()
@@ -102,11 +76,9 @@ void setup()
   init_pins();
   init_coms();
 
-
   set_load(cutin_r);
 
   set_theta(cutin_t);
-  alpha = norm_a;
   
   PCC_Relay = true;
   digitalWrite(24, PCC_Relay);
@@ -115,8 +87,6 @@ void setup()
   delay(5000);
   PCC_Relay = false;
   
-  analogWriteFrequency(6, 200000);
-  analogWriteResolution(8);
   Wait_Interval = 15000;
   
   init_timers();
@@ -150,27 +120,13 @@ void loop()
     pc_coms();
   }
 
-  if(millis() - Timer_Est >= Est_Interval)
-  {
-    Timer_Est = millis();
-
-    tempT = micros();
-    ws_linear = ws_estimator.linear();
-    linearTime = micros() - tempT;
-    tempT = micros();
-    ws_poly2 = ws_estimator.secondOrder();
-    poly2Time = micros() - tempT;
-    tempT = micros();
-    ws_bestFit = ws_estimator.bestFit();
-    bestFitTime = micros()- tempT;
-  }
-
   if (millis() - Timer_Log >= Log_Interval)
   {
     Timer_Log = millis();
 
     try_Log_Data((String)
-                 RPM
+                 (millis()/1000)
+                 + "," + RPM
                  + "," + windspeed
                  + "," + E_Switch
                  + "," + alpha
@@ -195,12 +151,9 @@ void manage_state()
   //Preset Go-to resistances
   static float med_r = 4.5;
   static float revive_r = 20;
-  static float last_rpm = 0;
 
   static float revive_t = 20.0;
   static float brake_t = 95;
-
-  static uint8_t pwrreg_a = 30;
 
   switch (State)
   {
@@ -236,7 +189,6 @@ void manage_state()
         //Move to Safety2
         State = Safety2_Entry;
       }
-      last_rpm = RPM;
       if (RPM > regulate_rpm)
       {
         State = Regulate;
@@ -245,8 +197,6 @@ void manage_state()
       revive_t = theta;
       revive_r = resistance;
       
-      
-
 
       break;
 
@@ -263,7 +213,6 @@ void manage_state()
         //Move to Safety2
         State = Safety2_Entry;
       }
-      //Regulate RPM at 11m/s val (PID? keep at val)
 
       if(RPM > 1.05*regulate_rpm)
       {
@@ -329,12 +278,11 @@ void manage_state()
 //---------------------------------------------------------------------------------------
 void optimize_3_3()
 {
-  static float sign = -1;
-  static float pitch_coef = 5.0;
-  static int r_iter = 0;
   static float dr;
-  static uint16_t SS_RPM;
   static uint16_t L_Voltage_Target = 3500;
+  static OptStates OState = TWait;
+  static OptStates NextOState = RCtrl;
+
   switch(OState)
   {
     case TWait:
@@ -347,17 +295,12 @@ void optimize_3_3()
       break;
 
     case RCtrl:
-      if(abs(L_Voltage - L_Voltage_Target) >= 10)
-      {
-        Resistance_Transient = 64000/(abs(L_Voltage - L_Voltage_Target)*resistance)+FILTER_LENGTH;
-      }
+      Resistance_Transient = 10000/((abs(L_Voltage - L_Voltage_Target)+100)*(resistance/64))+FILTER_LENGTH;
       if(L_Voltage < 0.95* L_Voltage_Target || L_Voltage > 1.05*L_Voltage_Target)
       {
-        dr = 0.01*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
+        dr = 0.001*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
         set_load(resistance + dr); // to be optimized
-        Pitch_Enable = false;
-        Transient_Interval = Resistance_Transient;
-        r_iter++;
+        Transient_Interval = 250;
         NextOState = RCtrl; //come back here after transiet
       }
       if(T_Voltage >= 3400)
@@ -367,58 +310,6 @@ void optimize_3_3()
       OState = TWait; //always wait for transient
       break;
 
-    case PStatic:
-      set_theta(opt_t);
-      Transient_Interval = Pitch_Transient;
-      OState = TWait;
-      NextOState = RCtrl;
-      break;
-
-    case PInit:
-      RPM_last = RPM;
-      OState = PCtrl;
-      break;
-
-    case PCtrl:
-      set_theta(theta + sign*pitch_coef);
-      Transient_Interval = Pitch_Transient;
-      OState = TWait;
-      NextOState = PCheck;
-      break;
-
-    case PCheck:
-      if (RPM_last > RPM)
-      {
-        sign = -sign;
-        pitch_coef = pitch_coef / 2.0;
-      }
-      else
-      {
-        sign = sign;
-      }
-      if(pitch_coef < .01)
-      {
-        pitch_coef = 0;
-        SS_RPM = RPM;
-        OState = TSS;
-      }
-      else
-      {
-      OState = TWait;
-      }
-      NextOState = RCtrl;
-      Transient_Interval = 1;
-      break;
-
-    case TSS:
-      if(0.9*SS_RPM > RPM || 1.1*SS_RPM < RPM)
-      {
-        pitch_coef = 5;
-        OState = TWait;
-        Transient_Interval = 2000;
-      }
-      
-      break;
     default:
       OState = TWait;
       NextOState = RCtrl;
@@ -433,16 +324,16 @@ void optimize_3_3()
 void regulate(uint16_t target_rpm)
 {
   static float dp;
+  static RegStates RegState = RWait;
   static RegStates NextRState = Preg;
   
   switch(RegState)
   {
     case RWait:
-      //Wait state to allow other states to jump into for transiets
       if (millis() - Timer_Transient >= Transient_Interval)
       {
         Timer_Transient = millis();
-        RegState = NextRState; //can specify next state in previous state
+        RegState = NextRState;
       }
       break;
 
@@ -452,23 +343,9 @@ void regulate(uint16_t target_rpm)
         dp = 0.003*(RPM - target_rpm);
         set_theta(theta + dp);
       }
-      Transient_Interval = 100;
-      NextRState = Areg;
-      RegState = RWait;
-      break;
-      
-    case Areg:
-      if(RPM > 1.3* target_rpm)
-      {
-        alpha = 30;
-      }
-      else
-      {
-        alpha = 0;
-      }      
-      RegState = RWait;
+      Transient_Interval = 200;
       NextRState = Preg;
-      Transient_Interval = 100;
+      RegState = RWait;
       break;
 
     default:
@@ -532,18 +409,11 @@ void pc_coms()
     Serial.print("PCC Relay: ");
     Serial.println(PCC_Relay);
 
-    Serial.print("Pitch Enable: ");
-    Serial.println(Pitch_Enable);
-
     Serial.print("RPM: ");
     Serial.println(RPM);
 
     Serial.print("Load Voltage: ");
     Serial.print(L_Voltage);
-    Serial.println(" mV");
-
-    Serial.print("Load Voltage (unf): ");
-    Serial.print(L_Voltage_raw);
     Serial.println(" mV");
 
     Serial.print("Load Current: ");
@@ -553,10 +423,6 @@ void pc_coms()
     Serial.print("Load Power: ");
     Serial.print(L_Power);
     Serial.println(" mW");
-
-    Serial.print("Calculated Power: ");
-    Serial.print((float) L_Voltage * L_Current / 1000000);
-    Serial.println(" W");
 
     Serial.print("Tubine Voltage: ");
     Serial.print(T_Voltage);
@@ -604,39 +470,12 @@ void pc_coms()
     Serial.print("(w) Windspeed (0.0-17.0): ");
     Serial.println(windspeed);
 
-    Serial.print("Linear: ");
-    Serial.print(ws_linear);
-    Serial.print(" - t :");
-    Serial.println(linearTime);
-
-    Serial.print("Poly2: ");
-    Serial.print(ws_poly2);
-    Serial.print(" - t :");
-    Serial.println(poly2Time);
-
-    Serial.print("Best Fit: ");
-    Serial.print(ws_bestFit);
-    Serial.print(" - t :");
-    Serial.println(bestFitTime);
-
-    Serial.print("(a) Alpha: ");
-    Serial.println(alpha);
-
     Serial.print("(t) Theta (0 - 95): ");
     Serial.println(0.0319 * theta_pos - 6.6379);
 
     Serial.print("(r) Load ( 0- 64 ): ");
     Serial.print((float)load_Val / 255 * 63.75);
     Serial.println(" Ohms");
-
-    Serial.println("(1)-k1 / (2)-k2 / (3)-k3 / (h)-thressh: ");
-    Serial.println((String) k1 + ", " + k2 + ", " + k3 + ", " + thresh);
-
-    //Serial.println("RPM + k1*theta + k2*alpha + k3*load_Val > thresh");
-    Serial.print("Overspeed Condition: ");
-    Serial.print(RPM + k1 * theta + k2 * alpha + k3 * load_Val);
-    Serial.print(" > ");
-    Serial.println(thresh);
 
     Serial.print("(s) Logging: ");
     if (Logging) {
@@ -713,13 +552,11 @@ void init_timers()
   Timer_Log = millis();
   Timer_Wait = millis();
   Timer_Transient = millis();
-  Timer_Est = millis();
 }
 
 //---------------------------------------------------------------------------------------
 void read_sensors_filtered()
 {
-  //L_Voltage = ina260.readBusVoltage();
   L_Voltage_raw = ina260.readBusVoltage();
   L_Power_raw = ina260.readPower();
   L_Current = ina260.readCurrent();
