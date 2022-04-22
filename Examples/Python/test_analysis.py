@@ -15,7 +15,7 @@ print(os.getcwd())
 df_train = pandas.read_excel("Examples/Python/data_4_20_22/6-13.xlsx", sheet_name="raw")
 df_test = pandas.read_excel("Examples/Python/data_4_20_22/6-13.xlsx", sheet_name="raw")
 
-inputs = ['rpm', 'theta', 'l_current', 'l_voltage',]
+inputs = ['rpm', 'theta', 'l_power']
 equation_map = {
     ' ': '*'
     , 'rpm': '_rpm'
@@ -30,7 +30,7 @@ Nt=1
 No=1
 precision = 'float64'
 D=[1, 2, 3, 4, 5, 6, 7, 8]
-
+#D= [2]
 for col in df_test.columns:
     df_test[col] = df_test[col].rolling(Nt).mean()
 df_test = df_test.iloc[Nt:]
@@ -42,6 +42,8 @@ df_train[output] = df_train[output]
 
 #df_test = df_test.loc[(df_test['windspeed'] > 6) & (df_test['windspeed'] < 9)]
 df_test[inputs] = df_test[inputs]#.apply(lambda x: x/1000)
+df_test['rpm'] = df_test['rpm'].apply(lambda x: x - 0)
+df_test['l_power'] = df_test['l_power'].apply(lambda x: x - 1500)
 df_test[output] = df_test[output]
 
 X = df_train[inputs]
@@ -103,7 +105,10 @@ equation = str(model.intercept_[0])
 
 i = 0
 while i < len(names):
-    equation += '\n + ' + str(decimal.Decimal.from_float(model.coef_[0][i])) + '*' + names[i] 
+    if precision == 'float32':
+        equation += '\n + ' + str(model.coef_[0][i]) + '*' + names[i] 
+    else:
+        equation += '\n + ' + str(decimal.Decimal.from_float(model.coef_[0][i])) + '*' + names[i] 
     i += 1
 
 #print('inputs: ' + str(feature_names))

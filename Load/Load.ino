@@ -2,7 +2,7 @@
 //Local libraries need to either be directly in the project folder, or in the src folder.
 //src linker only works in Arduino IDE 1.5+ I believe.
 #include "src/WP_SD.h"
-#include "src/WS_EST_ptr/WS_EST_ptr.h"
+#include "src/WS_EST/WS_EST.h"
 
 #define FILTER_LENGTH 10
 
@@ -95,6 +95,7 @@ bool Pitch_Enable;
 bool Startup = true;
 
 WindspeedEstimation ws_estimator(&RPM, &theta, &L_Current, &L_Voltage, &L_Power);
+
 //---------------------------------------------------------------------------------------
 void setup()
 {
