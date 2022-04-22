@@ -42,8 +42,8 @@ df_train[output] = df_train[output]
 
 #df_test = df_test.loc[(df_test['windspeed'] > 6) & (df_test['windspeed'] < 9)]
 df_test[inputs] = df_test[inputs]#.apply(lambda x: x/1000)
-df_test['rpm'] = df_test['rpm'].apply(lambda x: x - 0)
-df_test['l_power'] = df_test['l_power'].apply(lambda x: x - 1500)
+df_test['rpm'] = df_test['rpm']#.apply(lambda x: x - 0)
+df_test['l_power'] = df_test['l_power']#.apply(lambda x: x - 1500)
 df_test[output] = df_test[output]
 
 X = df_train[inputs]

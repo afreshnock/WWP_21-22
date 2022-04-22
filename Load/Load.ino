@@ -20,7 +20,7 @@ States State = Wait;
 float cutin_r = 64;
 float cutin_t = 20.0;
 uint8_t norm_a = 0;
-float opt_t = 8.5; // lowest optimal angle degree
+float opt_t = 7; // lowest optimal angle degree
 uint16_t regulate_rpm = 3000;
 
 uint16_t k1 = 1;
