@@ -14,7 +14,7 @@ enum RegStates {RWait, Preg};
 States State = Wait;
 
 float cutin_r = 64;
-float cutin_t = 20.0;
+float cutin_t = 19.5;
 float opt_t = 7; // lowest optimal angle degree
 uint16_t regulate_rpm = 3000;
 
@@ -67,6 +67,7 @@ unsigned Resistance_Transient = 250;
 unsigned Transient_Interval;
 
 bool Turbine_Comms;
+bool Wait_Entry;
 bool PCC_Relay;
 bool Turbine_PCC_Relay;
 
@@ -80,13 +81,7 @@ void setup()
 
   set_theta(cutin_t);
   
-  PCC_Relay = true;
-  digitalWrite(24, PCC_Relay);
-  delay(500);
-  uart_TX();
-  delay(5000);
-  PCC_Relay = false;
-  
+  Wait_Entry = true;
   Wait_Interval = 15000;
   
   init_timers();
@@ -125,7 +120,7 @@ void loop()
     Timer_Log = millis();
 
     try_Log_Data((String)
-                 (millis()/1000)
+                 millis()
                  + "," + RPM
                  + "," + windspeed
                  + "," + E_Switch
@@ -152,12 +147,24 @@ void manage_state()
   static float med_r = 4.5;
   static float revive_r = 20;
 
-  static float revive_t = 20.0;
   static float brake_t = 95;
 
   switch (State)
   {
     case Wait:
+      if(Wait_Entry)
+      {
+        Wait_Entry = false;
+        set_theta(cutin_t);
+        PCC_Relay = true;
+        digitalWrite(24, PCC_Relay);
+        delay(500);
+        uart_TX();
+        delay(5000);
+        PCC_Relay = false;
+        Wait_Interval = 15000;
+        Timer_Wait = millis();
+      }
       //If load recieves data from turbine, enter normal operation
       if (millis() - Timer_Wait >= Wait_Interval)
       {
@@ -194,9 +201,13 @@ void manage_state()
         State = Regulate;
       }
       optimize_3_3();
-      revive_t = theta;
       revive_r = resistance;
-      
+
+      if(RPM == 0 && !Turbine_Comms && theta != cutin_t && L_Voltage < 100)
+      {
+        State = Wait;
+        Wait_Entry = true;
+      }
 
       break;
 
@@ -213,18 +224,18 @@ void manage_state()
         //Move to Safety2
         State = Safety2_Entry;
       }
-
       if(RPM > 1.05*regulate_rpm)
       {
         regulate(1.1*regulate_rpm);
-        set_load(med_r);
       }
-      if(RPM < 0.95*regulate_rpm)
+      if((theta == opt_t && RPM < 1.05*regulate_rpm) || RPM < regulate_rpm)
       {
         State = Normal;
       }
-
-      revive_t = theta;
+      else
+      {
+        set_load(med_r);
+      }
       revive_r = resistance;
 
       break;
@@ -239,7 +250,7 @@ void manage_state()
       if (!E_Switch)
       {
         //Move to Safety1
-        set_theta(revive_t);
+        set_theta(cutin_t);
         set_load(revive_r);
         Timer_Wait = millis();
         Wait_Interval = 5000;
@@ -300,10 +311,10 @@ void optimize_3_3()
       {
         dr = 0.001*(L_Voltage_Target - L_Voltage); // dr/dl = .25ohms/+-100mV
         set_load(resistance + dr); // to be optimized
-        Transient_Interval = 250;
+        Transient_Interval = 100;
         NextOState = RCtrl; //come back here after transiet
       }
-      if(T_Voltage >= 3400)
+      if(T_Voltage >= 2850)
       {
         set_theta(opt_t);
       }
@@ -387,6 +398,10 @@ void pc_coms()
         set_theta(Serial.parseFloat());
         break;
 
+      case 'c':
+        cutin_t = Serial.parseFloat();
+        break;
+
       case 'a':
         alpha = Serial.parseInt();
         break;
@@ -403,6 +418,22 @@ void pc_coms()
   //---------------------------------------------------------------------------------------
   if (Serial) // check performance cost on checking if serial is active
   {
+    /*
+    Serial.print("RPM:");
+    Serial.print(RPM);
+    Serial.print(",");
+    Serial.print("L_Voltage:");
+    Serial.print(L_Voltage);
+    Serial.print(",");
+    Serial.print("L_Current:");
+    Serial.print(L_Current);
+    Serial.print(",");
+    Serial.print("L_Power:");
+    Serial.print(L_Power);
+    Serial.print(",");
+    Serial.print("theta:");
+    Serial.println(theta);
+    */
     Serial.print("Turbine Connected: ");
     Serial.println(Turbine_Comms);
 
@@ -472,6 +503,9 @@ void pc_coms()
 
     Serial.print("(t) Theta (0 - 95): ");
     Serial.println(0.0319 * theta_pos - 6.6379);
+
+    Serial.print("(c) Cutin Theta: ");
+    Serial.println(cutin_t);
 
     Serial.print("(r) Load ( 0- 64 ): ");
     Serial.print((float)load_Val / 255 * 63.75);
