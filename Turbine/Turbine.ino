@@ -29,7 +29,10 @@ uint16_t T_Voltage; //Turbine Voltage (mV)
 uint16_t RPM;       //Turbine RPM   (r/min)
 uint8_t alpha;      //Active Rectifier phase angle  (degrees)
 uint8_t old_alpha;
-uint16_t theta = 2000;      //Active Pitch angle   
+uint16_t theta = 0;      //Active Pitch angle   
+uint16_t old_theta = 1;
+bool theta_received;
+
 bool last_E_Switch;
 bool E_Switch;      //Bool indicating switch open
 
@@ -51,19 +54,17 @@ bool last_PCC_Relay = false;
 //---------------------------------------------------------------------------------------
 void setup()
 {
-  delay(1000);
+  #if defined(__IMXRT1062__)
+    set_arm_clock(24000000);
+  #endif
+
+  theta_received = false;
   pinMode(13, OUTPUT); //debug pin
   digitalWrite(13, HIGH);
   //UART1 (to turbine)
   pinMode(1, OUTPUT); //TX1
   pinMode(0, INPUT);  //RX1
-  #if defined(__IMXRT1062__)
-    set_arm_clock(24000000);
-    Serial.print("F_CPU_ACTUAL=");
-    Serial.println(F_CPU_ACTUAL);
-  #endif
-  
-  
+
   //UART2 (to linear actuators)
   pinMode(20, OUTPUT); //TX1
   pinMode(21, INPUT);  //RX1
@@ -94,7 +95,7 @@ void setup()
   
   //linear actuator
   myServo.begin(32);  
-  myServo.movingSpeed(ID_NUM,750);
+  myServo.movingSpeed(ID_NUM,750);//750
   
   //initialize RPM
   setup_RPM();
@@ -118,13 +119,11 @@ void loop()
     update_PCC_Relay();
     //***********************************************************************
     uart_TX();
-    if(old_alpha != alpha)
+    if(old_theta != theta && theta_received && T_Voltage > 3100)
     {
-      old_alpha = alpha;
-      AR_TX();
-      AR_RX();
+      old_theta = theta;
+      myServo.goalPosition(ID_NUM, theta);
     }
-    myServo.goalPosition(ID_NUM, theta);
   }
   
   if(millis() - Timer_Slow >= 250)
@@ -328,6 +327,7 @@ void uart_RX()
         theta = ((temp2_h << 8) | temp2_l);
         State = temp3;
         PCC_Relay = temp4;
+        theta_received = true;
       }
     }
   }

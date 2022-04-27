@@ -82,7 +82,17 @@ void setup()
   set_theta(cutin_t);
   
   Wait_Entry = true;
+  //Wait_Interval = 15000;
+
+  set_theta(cutin_t);
+  PCC_Relay = true;
+  digitalWrite(24, PCC_Relay);
+  delay(1000);
+  uart_TX();
+  delay(7000);
+  PCC_Relay = false;
   Wait_Interval = 15000;
+  Timer_Wait = millis();
   
   init_timers();
 }
@@ -155,15 +165,6 @@ void manage_state()
       if(Wait_Entry)
       {
         Wait_Entry = false;
-        set_theta(cutin_t);
-        PCC_Relay = true;
-        digitalWrite(24, PCC_Relay);
-        delay(500);
-        uart_TX();
-        delay(5000);
-        PCC_Relay = false;
-        Wait_Interval = 15000;
-        Timer_Wait = millis();
       }
       //If load recieves data from turbine, enter normal operation
       if (millis() - Timer_Wait >= Wait_Interval)
@@ -241,7 +242,6 @@ void manage_state()
       break;
 
     case Safety1:
-      //do safety1 stuff
       set_theta(brake_t);
       PCC_Relay = true;
        
@@ -249,7 +249,6 @@ void manage_state()
       //Emergency switch condition
       if (!E_Switch)
       {
-        //Move to Safety1
         set_theta(cutin_t);
         set_load(revive_r);
         Timer_Wait = millis();
