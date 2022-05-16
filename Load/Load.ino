@@ -167,11 +167,10 @@ void manage_state()
         Wait_Entry = false;
       }
       //If load recieves data from turbine, enter normal operation
-      if (millis() - Timer_Wait >= Wait_Interval)
+      if (millis() - Timer_Wait >= Wait_Interval || RPM > 2100)
       {
         if (Turbine_Comms)
         {
-          State = Regulate;
           if (SDConnected && !Logging)
           {
             toggle_Logging();
@@ -179,6 +178,15 @@ void manage_state()
           if(PCC_Relay)
           {
             PCC_Relay = false;
+          }
+          if(RPM > 2100)
+          {
+            set_theta(30);
+            State = Regulate;
+          }
+          else
+          {
+            State = Normal;
           }
         }
       }
@@ -225,11 +233,8 @@ void manage_state()
         //Move to Safety2
         State = Safety2_Entry;
       }
-      if(RPM > 1.05*regulate_rpm)
-      {
-        regulate(1.1*regulate_rpm);
-      }
-      if((theta == opt_t && RPM < 1.05*regulate_rpm) || RPM < regulate_rpm)
+      regulate(1.1*regulate_rpm);
+      if((theta == opt_t && RPM < 1.05*regulate_rpm) || RPM < 2000)
       {
         State = Normal;
       }
@@ -249,7 +254,7 @@ void manage_state()
       //Emergency switch condition
       if (!E_Switch)
       {
-        set_theta(cutin_t);
+        set_theta(cutin_t-5.0);
         set_load(revive_r);
         Timer_Wait = millis();
         Wait_Interval = 5000;
